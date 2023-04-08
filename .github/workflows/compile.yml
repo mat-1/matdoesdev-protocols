@@ -7,7 +7,7 @@ on:
     paths-ignore:
       - "**.md"
     branches:
-      - main
+      - master
 
 env:
   CARGO_TERM_COLOR: always
