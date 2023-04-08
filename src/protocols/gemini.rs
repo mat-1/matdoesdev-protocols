@@ -196,7 +196,7 @@ impl Protocol for Gemini {
         let gemini = Arc::new(self);
 
         let acceptor = cert::acceptor();
-        let listener = TcpListener::bind("localhost:1965").await.unwrap();
+        let listener = TcpListener::bind("0.0.0.0:1965").await.unwrap();
 
         loop {
             let (stream, _) = listener.accept().await.unwrap();
