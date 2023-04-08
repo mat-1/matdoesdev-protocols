@@ -16,7 +16,7 @@ async fn main() {
 
     // read from the cache if it exists
 
-    let use_cache = true;
+    let use_cache = false;
 
     let data = if use_cache {
         if let Ok(cache) = fs::read_to_string("cache.json").await {
