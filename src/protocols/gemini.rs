@@ -210,6 +210,8 @@ impl Protocol for Gemini {
                 let n = stream.read(&mut buffer).await?;
                 let request = String::from_utf8_lossy(&buffer[..n]).to_string();
 
+                println!("Gemini request: {request}");
+
                 // strip "gemini://{hostname}" from the request
                 let path = request
                     .strip_prefix(&format!("gemini://{}", HOSTNAME))
