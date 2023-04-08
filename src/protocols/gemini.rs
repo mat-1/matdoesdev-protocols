@@ -259,6 +259,7 @@ impl Protocol for Gemini {
                     _ => "51 Not found\r\n".as_bytes().to_vec(),
                 };
                 stream.write_all(&response).await.unwrap();
+                let _ = stream.shutdown().await;
 
                 Ok(()) as io::Result<()>
             };
