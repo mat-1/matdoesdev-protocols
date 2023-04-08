@@ -517,7 +517,7 @@ dependencies = [
 
 [[package]]
 name = "matdoesdev-protocols"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "async-recursion",
  "chrono",
