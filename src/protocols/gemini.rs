@@ -206,9 +206,24 @@ impl Protocol for Gemini {
             let fut = async move {
                 let mut stream = acceptor.accept(stream).await?;
 
-                let mut buffer = [0; 1024];
-                let n = stream.read(&mut buffer).await?;
-                let request = String::from_utf8_lossy(&buffer[..n]).to_string();
+                let mut request = [0; 1026];
+                let mut len = 0;
+                loop {
+                    let mut buffer = [0; 1024];
+                    let n = stream.read(&mut buffer).await?;
+                    if n == 0 {
+                        break;
+                    }
+                    // add the new data to the request
+                    request[len..len + n].copy_from_slice(&buffer[..n]);
+                    len += n;
+                    if buffer.contains(&b'\r') || len >= 1024 {
+                        break;
+                    }
+                }
+                // ignore everything after the first \r
+                let request = request[..len].split(|v| v == &b'\r').next().unwrap();
+                let request = String::from_utf8_lossy(request).to_string();
 
                 println!("Gemini request: {request}");
 
