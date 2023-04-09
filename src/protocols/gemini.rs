@@ -207,11 +207,13 @@ impl Protocol for Gemini {
 
         loop {
             let (stream, _) = listener.accept().await.unwrap();
+            println!("started tcp connection");
             let acceptor = acceptor.clone();
 
             let gemini = Arc::clone(&gemini);
             let fut = async move {
                 let mut stream = acceptor.accept(stream).await?;
+                println!("wrapped stream in tls");
 
                 let response = respond(gemini, &mut stream)
                     .await
@@ -243,6 +245,7 @@ async fn respond(
         let Ok(n) = stream.read(&mut buffer).await else {
             return Ok(b"59 Couldn't receive request\r\n".to_vec());
         };
+        println!("read {n} bytes: {}", String::from_utf8_lossy(&buffer[..n]));
         if n == 0 {
             break;
         }
