@@ -21,7 +21,7 @@ use crate::{
 
 use super::Protocol;
 
-const BIND_HOST: &str = "::";
+const BIND_HOST: &str = "[::]";
 const BIND_PORT: u16 = 1965;
 
 const INDEX_GMI: &str = r#"```matdoesdev
