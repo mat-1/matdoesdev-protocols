@@ -12,6 +12,9 @@ use serde::{Deserialize, Serialize};
 use tl::{HTMLTag, Node, NodeHandle};
 use tokio::fs;
 
+const CRAWL_SCHEME: &str = "https";
+const CRAWL_HOSTNAME: &str = "matdoes.dev";
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SiteData {
     pub projects: Vec<Project>,
@@ -60,6 +63,10 @@ pub struct Post {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum PostPart {
     Text(String),
+    InlineCode(String),
+    CodeBlock(String),
+    Italic(String),
+    Bold(String),
     Image {
         src: ImageSource,
         alt: Option<String>,
@@ -73,6 +80,7 @@ pub enum PostPart {
         level: usize,
         text: String,
     },
+    Quote(String),
 }
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ImageSource {
@@ -91,7 +99,7 @@ async fn crawl_projects(
     client: &reqwest::Client,
 ) -> Result<Vec<Project>, Box<dyn std::error::Error>> {
     println!("Crawling projects...");
-    let url = "https://matdoes.dev/projects.json";
+    let url = format!("{CRAWL_SCHEME}://{CRAWL_HOSTNAME}/projects.json");
     let response = client.get(url).send().await?;
     let projects: Vec<Project> = response.json().await?;
     println!("Crawled {} projects", projects.len());
@@ -117,7 +125,7 @@ async fn get_image(client: &reqwest::Client, image_url: &Url) -> PathBuf {
 
 async fn crawl_blog(client: &reqwest::Client) -> Result<Vec<Post>, Box<dyn std::error::Error>> {
     println!("Crawling blog...");
-    let url = "https://matdoes.dev/blog.json";
+    let url = format!("{CRAWL_SCHEME}://{CRAWL_HOSTNAME}/blog.json");
     let response = client.get(url).send().await?;
     let posts_json: serde_json::Value = response.json().await?;
 
@@ -129,7 +137,7 @@ async fn crawl_blog(client: &reqwest::Client) -> Result<Vec<Post>, Box<dyn std::
     for post_json in posts_json.as_array().unwrap() {
         let slug = post_json["slug"].as_str().unwrap();
         println!("Crawling {slug}...");
-        let url = format!("https://matdoes.dev/blog/{slug}.json");
+        let url = format!("{CRAWL_SCHEME}://{CRAWL_HOSTNAME}/blog/{slug}.json");
         let response = client.get(&url).send().await?;
         let post_json: serde_json::Value = response.json().await?;
 
@@ -189,12 +197,13 @@ async fn crawl_blog(client: &reqwest::Client) -> Result<Vec<Post>, Box<dyn std::
                             .to_string();
 
                         // combine the base url with the src
-                        let image_url = Url::parse("https://matdoes.dev/blog/{slug}")
-                            .unwrap()
-                            .join(&src)
-                            .unwrap();
+                        let image_url =
+                            Url::parse(&format!("{CRAWL_SCHEME}://{CRAWL_HOSTNAME}/blog/{slug}"))
+                                .unwrap()
+                                .join(&src)
+                                .unwrap();
 
-                        if image_url.host_str().unwrap() != "matdoes.dev" {
+                        if image_url.host_str().unwrap() != CRAWL_HOSTNAME {
                             content.push(PostPart::Image {
                                 src: ImageSource::Remote(src.to_string()),
                                 alt: element
@@ -243,6 +252,21 @@ async fn crawl_blog(client: &reqwest::Client) -> Result<Vec<Post>, Box<dyn std::
                         }
                         content.push(PostPart::LineBreak);
                     }
+                    "code" => {
+                        content.push(PostPart::InlineCode(html_tag_to_string(parser, element)));
+                    }
+                    "pre" => {
+                        content.push(PostPart::CodeBlock(html_tag_to_string(parser, element)));
+                    }
+                    "blockquote" => {
+                        content.push(PostPart::Quote(html_tag_to_string(parser, element)));
+                    }
+                    "em" | "i" => {
+                        content.push(PostPart::Italic(html_tag_to_string(parser, element)));
+                    }
+                    "strong" | "b" => {
+                        content.push(PostPart::Bold(html_tag_to_string(parser, element)));
+                    }
                     "h1" => {
                         content.push(PostPart::Heading {
                             level: 1,
@@ -265,7 +289,6 @@ async fn crawl_blog(client: &reqwest::Client) -> Result<Vec<Post>, Box<dyn std::
                         for child in element.children().top().iter() {
                             parse_node(client, parser, child, content, slug).await;
                         }
-                        content.push(PostPart::LineBreak);
                     }
                 },
                 Node::Comment(_) => {}

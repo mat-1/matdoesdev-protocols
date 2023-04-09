@@ -73,12 +73,19 @@ impl Protocol for Gemini {
             let mut content = String::new();
 
             content.push_str(&format!("# {title}\n"));
+            content.push_str(&format!("{date}\n\n"));
 
             let mut queued_links: Vec<Link> = Vec::new();
             let mut last_tag_was_line_break = false;
             for part in &post.content {
                 match part {
                     PostPart::Text(text) => content.push_str(text),
+                    PostPart::CodeBlock(text) => {
+                        content.push_str(&format!("```\n{text}\n```\n"));
+                    }
+                    PostPart::InlineCode(text) => {
+                        content.push_str(&format!("`{text}`"));
+                    }
                     PostPart::Image { src, alt } => {
                         let href = match src {
                             ImageSource::Local(path) => {
@@ -125,6 +132,17 @@ impl Protocol for Gemini {
                         3 => content.push_str(&format!("### {text}\n")),
                         _ => {}
                     },
+                    PostPart::Italic(text) => {
+                        content.push_str(&format!("*{text}*"));
+                    }
+                    PostPart::Bold(text) => {
+                        content.push_str(&format!("**{text}**"));
+                    }
+                    PostPart::Quote(text) => {
+                        for line in text.lines() {
+                            content.push_str(&format!("> {line}\n"));
+                        }
+                    }
                 }
                 last_tag_was_line_break = false;
             }
