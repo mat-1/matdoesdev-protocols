@@ -9,8 +9,10 @@ use std::{
 
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpListener,
+    net::{TcpListener, TcpStream},
 };
+use tokio_rustls::server::TlsStream;
+use url::Url;
 
 use crate::{
     crawl::{ImageSource, PostPart, SiteData},
@@ -18,6 +20,9 @@ use crate::{
 };
 
 use super::Protocol;
+
+const BIND_HOST: &str = "0.0.0.0";
+const BIND_PORT: u16 = 1965;
 
 const INDEX_GMI: &str = r#"```matdoesdev
                        888        888                                 888                   
@@ -196,7 +201,9 @@ impl Protocol for Gemini {
         let gemini = Arc::new(self);
 
         let acceptor = cert::acceptor();
-        let listener = TcpListener::bind("0.0.0.0:1965").await.unwrap();
+        let listener = TcpListener::bind(format!("{BIND_HOST}:{BIND_PORT}"))
+            .await
+            .unwrap();
 
         loop {
             let (stream, _) = listener.accept().await.unwrap();
@@ -206,78 +213,8 @@ impl Protocol for Gemini {
             let fut = async move {
                 let mut stream = acceptor.accept(stream).await?;
 
-                let mut request = [0; 1026];
-                let mut len = 0;
-                loop {
-                    let mut buffer = [0; 1024];
-                    let Ok(n) = stream.read(&mut buffer).await else {
-                        stream.write_all(b"20 text/gemini\r\n{INDEX_GMI}\n").await?;
-                        stream.shutdown().await?;
-                        return Ok(());
-                    };
-                    if n == 0 {
-                        break;
-                    }
-                    // add the new data to the request
-                    request[len..len + n].copy_from_slice(&buffer[..n]);
-                    len += n;
-                    if buffer.contains(&b'\r') || len >= 1024 {
-                        break;
-                    }
-                }
-                // ignore everything after the first \r
-                let request = request[..len].split(|v| v == &b'\r').next().unwrap();
-                let request = String::from_utf8_lossy(request).to_string();
+                let response = respond(gemini, &mut stream).await?;
 
-                println!("Gemini request: {request}");
-
-                // strip "gemini://{hostname}" from the request
-                let path = request
-                    .strip_prefix(&format!("gemini://{}", HOSTNAME))
-                    .unwrap_or(&request)
-                    .split("\r\n")
-                    .next()
-                    .unwrap();
-
-                let response: Vec<u8> = match path {
-                    "" => b"31 /\r\n".to_vec(),
-                    "/" => format!("20 text/gemini\r\n{INDEX_GMI}\n")
-                        .as_bytes()
-                        .to_vec(),
-                    "/blog" => format!("20 text/gemini\r\n{}\n", gemini.blog_gmi)
-                        .as_bytes()
-                        .to_vec(),
-                    "/projects" => format!("20 text/gemini\r\n{}\n", gemini.projects_gmi)
-                        .as_bytes()
-                        .to_vec(),
-                    path if path.starts_with("/blog/") => {
-                        let slug = path.strip_prefix("/blog/").unwrap();
-                        // if it has another slash, that means it's media
-                        if slug.contains('/') {
-                            // get the path relative to the media directory
-                            let path = slug;
-                            let path = Path::new("media/blog").join(path);
-                            let mime = mime_guess::from_path(&path).first_or_octet_stream();
-                            let mime = mime.to_string();
-                            println!("path: {path:?}, mime: {mime}");
-                            let mut file = tokio::fs::File::open(path).await.unwrap();
-                            let mut content = Vec::new();
-                            file.read_to_end(&mut content).await.unwrap();
-                            format!("20 {}\r\n", mime)
-                                .as_bytes()
-                                .to_vec()
-                                .into_iter()
-                                .chain(content)
-                                .collect()
-                        } else {
-                            let post = gemini.posts_gmi.get(slug).unwrap();
-                            format!("20 text/gemini\r\n{}\r\n", post)
-                                .as_bytes()
-                                .to_vec()
-                        }
-                    }
-                    _ => b"51 Not found\r\n".to_vec(),
-                };
                 stream.write_all(&response).await?;
                 stream.shutdown().await?;
 
@@ -291,4 +228,90 @@ impl Protocol for Gemini {
             });
         }
     }
+}
+
+async fn respond(
+    gemini: Arc<Gemini>,
+    stream: &mut TlsStream<TcpStream>,
+) -> std::io::Result<Vec<u8>> {
+    let mut request = [0; 1026];
+    let mut len = 0;
+    loop {
+        let mut buffer = [0; 1027];
+        let Ok(n) = stream.read(&mut buffer).await else {
+            return Ok(b"59 Couldn't receive request\r\n".to_vec());
+        };
+        if n == 0 {
+            break;
+        }
+        if n + len > request.len() {
+            return Ok(b"59 Request is too large\r\n".to_vec());
+        }
+        // add the new data to the request
+        request[len..len + n].copy_from_slice(&buffer[..n]);
+        len += n;
+        if buffer.contains(&b'\r') {
+            break;
+        }
+    }
+    // ignore everything after the first \r
+    let request = request[..len].split(|v| v == &b'\r').next().unwrap();
+    let Ok(request) = std::str::from_utf8(request) else {
+        return Ok(b"59 Request is not UTF-8\r\n".to_vec());
+    };
+
+    println!("Gemini request: {request}");
+
+    let Ok(url) = Url::parse(request) else {
+        return Ok(b"59 Request is not a valid URL\r\n".to_vec());
+    };
+
+    if url.scheme() != "gemini" {
+        return Ok(b"53 Request is not a Gemini URL\r\n".to_vec());
+    };
+    if url.host_str() != Some(HOSTNAME) {
+        return Ok(b"53 Host doesn't match\r\n".to_vec());
+    };
+    if url.port().unwrap_or(BIND_PORT) != BIND_PORT {
+        return Ok(b"53 Port doesn't match\r\n".to_vec());
+    };
+
+    Ok(match url.path() {
+        "/" | "" => format!("20 text/gemini\r\n{INDEX_GMI}\n")
+            .as_bytes()
+            .to_vec(),
+        "/blog" => format!("20 text/gemini\r\n{}\n", gemini.blog_gmi)
+            .as_bytes()
+            .to_vec(),
+        "/projects" => format!("20 text/gemini\r\n{}\n", gemini.projects_gmi)
+            .as_bytes()
+            .to_vec(),
+        path if path.starts_with("/blog/") => {
+            let slug = path.strip_prefix("/blog/").unwrap();
+            // if it has another slash, that means it's media
+            if slug.contains('/') {
+                // get the path relative to the media directory
+                let path = slug;
+                let path = Path::new("media/blog").join(path);
+                let mime = mime_guess::from_path(&path).first_or_octet_stream();
+                let mime = mime.to_string();
+                println!("path: {path:?}, mime: {mime}");
+                let mut file = tokio::fs::File::open(path).await.unwrap();
+                let mut content = Vec::new();
+                file.read_to_end(&mut content).await.unwrap();
+                format!("20 {}\r\n", mime)
+                    .as_bytes()
+                    .to_vec()
+                    .into_iter()
+                    .chain(content)
+                    .collect()
+            } else {
+                let post = gemini.posts_gmi.get(slug).unwrap();
+                format!("20 text/gemini\r\n{}\r\n", post)
+                    .as_bytes()
+                    .to_vec()
+            }
+        }
+        _ => b"51 Not found\r\n".to_vec(),
+    })
 }

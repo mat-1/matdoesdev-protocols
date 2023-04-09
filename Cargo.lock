@@ -530,6 +530,7 @@ dependencies = [
  "tl",
  "tokio",
  "tokio-rustls",
+ "url",
 ]
 
 [[package]]
