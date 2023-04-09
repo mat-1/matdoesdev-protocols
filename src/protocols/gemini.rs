@@ -213,7 +213,9 @@ impl Protocol for Gemini {
             let fut = async move {
                 let mut stream = acceptor.accept(stream).await?;
 
-                let response = respond(gemini, &mut stream).await?;
+                let response = respond(gemini, &mut stream)
+                    .await
+                    .unwrap_or(b"59 Internal error\r\n".to_vec());
 
                 stream.write_all(&response).await?;
                 stream.shutdown().await?;
