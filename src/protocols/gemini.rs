@@ -77,7 +77,7 @@ impl Protocol for Gemini {
 
             let mut queued_links: Vec<Link> = Vec::new();
             let mut last_tag_was_line_break = false;
-            for part in &post.content {
+            for (i, part) in post.content.iter().enumerate() {
                 match part {
                     PostPart::Text(text) => content.push_str(text),
                     PostPart::CodeBlock(text) => {
@@ -108,9 +108,29 @@ impl Protocol for Gemini {
                     PostPart::Link { text, href } => {
                         queued_links.push(Link {
                             text: text.to_owned(),
-                            href: href.to_owned(),
+                            href: match href {
+                                h if h.starts_with("https://gemini.circumlunar.space/") => {
+                                    // replace the https:// with gemini://
+                                    h.replacen("https://", "gemini://", 1)
+                                }
+                                h if h.starts_with("https://gmi.skyjake.fi/") => {
+                                    // replace the https://gmi. with gemini://
+                                    h.replacen("https://gmi.", "gemini://", 1)
+                                }
+                                h => h.to_owned(),
+                            },
                         });
-                        content.push_str(text);
+                        // add the link text unless the part before and after are line breaks
+                        let before_is_line_break =
+                            i == 0 || matches!(post.content[i - 1], PostPart::LineBreak);
+                        let after_is_line_break = i == post.content.len() - 1
+                            || matches!(post.content[i + 1], PostPart::LineBreak);
+                        if before_is_line_break && after_is_line_break {
+                            // remove the last line break too
+                            content.pop();
+                        } else {
+                            content.push_str(text);
+                        }
                     }
                     PostPart::LineBreak => {
                         if !last_tag_was_line_break {
