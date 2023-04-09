@@ -246,7 +246,7 @@ async fn crawl_blog(client: &reqwest::Client) -> Result<Vec<Post>, Box<dyn std::
                     "br" => {
                         content.push(PostPart::LineBreak);
                     }
-                    "p" => {
+                    "p" | "button" => {
                         for child in element.children().top().iter() {
                             parse_node(client, parser, child, content, slug).await;
                         }
