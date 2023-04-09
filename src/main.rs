@@ -8,7 +8,7 @@ use crate::protocols::Protocol;
 mod crawl;
 mod protocols;
 
-const HOSTNAME: &str = "matdoes.dev";
+const HOSTNAME: &str = "localhost";
 
 #[tokio::main]
 async fn main() {

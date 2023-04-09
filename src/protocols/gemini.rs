@@ -210,7 +210,11 @@ impl Protocol for Gemini {
                 let mut len = 0;
                 loop {
                     let mut buffer = [0; 1024];
-                    let n = stream.read(&mut buffer).await?;
+                    let Ok(n) = stream.read(&mut buffer).await else {
+                        stream.write_all(b"20 text/gemini\r\n{INDEX_GMI}\n").await?;
+                        stream.shutdown().await?;
+                        return Ok(());
+                    };
                     if n == 0 {
                         break;
                     }
@@ -236,13 +240,14 @@ impl Protocol for Gemini {
                     .unwrap();
 
                 let response: Vec<u8> = match path {
-                    "/" => format!("20 text/gemini\r\n{INDEX_GMI}\r\n")
+                    "" => b"31 /\r\n".to_vec(),
+                    "/" => format!("20 text/gemini\r\n{INDEX_GMI}\n")
                         .as_bytes()
                         .to_vec(),
-                    "/blog" => format!("20 text/gemini\r\n{}\r\n", gemini.blog_gmi)
+                    "/blog" => format!("20 text/gemini\r\n{}\n", gemini.blog_gmi)
                         .as_bytes()
                         .to_vec(),
-                    "/projects" => format!("20 text/gemini\r\n{}\r\n", gemini.projects_gmi)
+                    "/projects" => format!("20 text/gemini\r\n{}\n", gemini.projects_gmi)
                         .as_bytes()
                         .to_vec(),
                     path if path.starts_with("/blog/") => {
@@ -271,13 +276,10 @@ impl Protocol for Gemini {
                                 .to_vec()
                         }
                     }
-                    _ => "51 Not found\r\n".as_bytes().to_vec(),
+                    _ => b"51 Not found\r\n".to_vec(),
                 };
-                println!("writing {} bytes", response.len());
                 stream.write_all(&response).await?;
-                println!("shutting down");
                 stream.shutdown().await?;
-                println!("ok");
 
                 Ok(()) as io::Result<()>
             };
