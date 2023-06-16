@@ -68,7 +68,7 @@ impl Protocol for Gemini {
             let date = post.published.format("%Y-%m-%d").to_string();
             let title = &post.title;
             // add it to the index
-            blog_gmi.push_str(&format!("=> /blog/{slug} {date} - {title}\n"));
+            blog_gmi.push_str(&format!("=> /{slug} {date} - {title}\n"));
             // generate the content
             let mut content = String::new();
 
@@ -329,8 +329,8 @@ async fn respond(
         "/projects" => format!("20 text/gemini\r\n{}\n", gemini.projects_gmi)
             .as_bytes()
             .to_vec(),
-        path if path.starts_with("/blog/") => {
-            let slug = path.strip_prefix("/blog/").unwrap();
+        path => {
+            let slug = path.strip_prefix("/").unwrap();
             // if it has another slash, that means it's media
             if slug.contains('/') {
                 // get the path relative to the media directory
@@ -349,12 +349,13 @@ async fn respond(
                     .chain(content)
                     .collect()
             } else {
-                let post = gemini.posts_gmi.get(slug).unwrap();
-                format!("20 text/gemini\r\n{}\r\n", post)
-                    .as_bytes()
-                    .to_vec()
+                match gemini.posts_gmi.get(slug) {
+                    Some(post) => format!("20 text/gemini\r\n{}\r\n", post)
+                        .as_bytes()
+                        .to_vec(),
+                    None => b"51 Not found\r\n".to_vec(),
+                }
             }
         }
-        _ => b"51 Not found\r\n".to_vec(),
     })
 }

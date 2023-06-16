@@ -137,7 +137,7 @@ async fn crawl_blog(client: &reqwest::Client) -> Result<Vec<Post>, Box<dyn std::
     for post_json in posts_json.as_array().unwrap() {
         let slug = post_json["slug"].as_str().unwrap();
         println!("Crawling {slug}...");
-        let url = format!("{CRAWL_SCHEME}://{CRAWL_HOSTNAME}/blog/{slug}.json");
+        let url = format!("{CRAWL_SCHEME}://{CRAWL_HOSTNAME}/{slug}.json");
         let response = client.get(&url).send().await?;
         let post_json: serde_json::Value = response.json().await?;
 
@@ -198,7 +198,7 @@ async fn crawl_blog(client: &reqwest::Client) -> Result<Vec<Post>, Box<dyn std::
 
                         // combine the base url with the src
                         let image_url =
-                            Url::parse(&format!("{CRAWL_SCHEME}://{CRAWL_HOSTNAME}/blog/{slug}"))
+                            Url::parse(&format!("{CRAWL_SCHEME}://{CRAWL_HOSTNAME}/{slug}"))
                                 .unwrap()
                                 .join(&src)
                                 .unwrap();
