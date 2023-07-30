@@ -15,8 +15,8 @@ async fn main() {
     println!("Hello, world!");
 
     // read from the cache if it exists
-
-    let use_cache = false;
+    // mainly meant for debugging
+    let use_cache = true;
 
     let data = if use_cache {
         if let Ok(cache) = fs::read_to_string("cache.json").await {
@@ -36,8 +36,9 @@ async fn main() {
     println!("now serving");
 
     let gemini = protocols::gemini::Gemini::generate(&data);
+    let ssh = protocols::ssh::Ssh::generate(&data);
 
-    gemini.serve().await;
+    tokio::join!(gemini.serve(), ssh.serve());
 
     // println!("{:?}", crawl_result);
 }

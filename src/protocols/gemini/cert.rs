@@ -17,7 +17,7 @@ fn generate_new_cert() -> Certificate {
     Certificate::from_params(cert_params).unwrap()
 }
 
-const KEY_PATH: &str = "gemini/certs";
+const KEY_PATH: &str = "data/gemini/certs";
 const PUBLIC_KEY_FILENAME: &str = "public.der";
 const PRIVATE_KEY_FILENAME: &str = "private.der";
 
