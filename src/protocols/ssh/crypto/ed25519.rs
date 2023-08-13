@@ -2,7 +2,7 @@ use std::{io::Read, path::Path};
 
 use ed25519_dalek::{ed25519::signature::Signature, Keypair, Signer};
 
-use super::protocol;
+use crate::protocols::ssh::protocol;
 
 const KEYPAIR_PATH: &str = "data/ssh/keypair.bin";
 

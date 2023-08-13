@@ -1,5 +1,6 @@
 #![allow(incomplete_features)]
 #![feature(async_fn_in_trait)]
+#![feature(cursor_remaining)]
 
 use tokio::fs;
 
@@ -7,6 +8,7 @@ use crate::protocols::Protocol;
 
 mod crawl;
 mod protocols;
+pub mod shared;
 
 const HOSTNAME: &str = "matdoes.dev";
 
