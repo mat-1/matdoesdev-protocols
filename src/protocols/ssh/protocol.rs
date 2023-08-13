@@ -126,7 +126,7 @@ pub enum Message {
         recipient_channel: u32,
         request_type: String,
         want_reply: bool,
-        // depends
+        extra: ChannelRequestExtra,
     } = 98,
     ChannelSuccess {
         recipient_channel: u32,
@@ -134,6 +134,25 @@ pub enum Message {
     ChannelFailure {
         recipient_channel: u32,
     } = 100,
+}
+
+#[derive(Debug)]
+pub enum ChannelRequestExtra {
+    Terminal {
+        terminal_type: String,
+        width_columns: u32,
+        height_rows: u32,
+        width_pixels: u32,
+        height_pixels: u32,
+        terminal_modes: Vec<u8>,
+    },
+    WindowChange {
+        width_columns: u32,
+        height_rows: u32,
+        width_pixels: u32,
+        height_pixels: u32,
+    },
+    None,
 }
 
 pub fn read_payload(
@@ -146,7 +165,6 @@ pub fn read_payload(
     {
         let mut data_cloned = data.remaining_slice().to_vec();
         if data_cloned.len() < 4 {
-            println!("not enough data for packet length yet");
             bail!("not enough data for packet length yet");
         }
 
@@ -165,21 +183,14 @@ pub fn read_payload(
         } else {
             packet_length = Cursor::new(data_cloned).read_u32::<BE>()? as usize;
         }
-        println!("packet_length: {packet_length}");
     }
 
     let entire_packet_length = packet_length + 4;
 
     // 4 extra bytes for the packet length, 32 for mac
     if data.remaining_slice().len() < entire_packet_length {
-        println!(
-            "not enough data yet {} < {entire_packet_length}",
-            data.remaining_slice().len()
-        );
         bail!("not enough data yet");
     }
-
-    println!("ok, reading");
 
     let mut bytes = vec![0; entire_packet_length];
     data.read_exact(&mut bytes)?;
@@ -444,10 +455,30 @@ pub fn read_message(mut data: impl Read) -> anyhow::Result<Message> {
             let recipient_channel = data.read_u32::<BE>()?;
             let request_type = read_string(&mut data)?;
             let want_reply = data.read_u8()? != 0;
+
+            let extra = match request_type.as_str() {
+                "pty-req" => ChannelRequestExtra::Terminal {
+                    terminal_type: read_string(&mut data)?,
+                    width_columns: data.read_u32::<BE>()?,
+                    height_rows: data.read_u32::<BE>()?,
+                    width_pixels: data.read_u32::<BE>()?,
+                    height_pixels: data.read_u32::<BE>()?,
+                    terminal_modes: read_bytes(&mut data)?,
+                },
+                "window-change" => ChannelRequestExtra::WindowChange {
+                    width_columns: data.read_u32::<BE>()?,
+                    height_rows: data.read_u32::<BE>()?,
+                    width_pixels: data.read_u32::<BE>()?,
+                    height_pixels: data.read_u32::<BE>()?,
+                },
+                _ => ChannelRequestExtra::None,
+            };
+
             Ok(Message::ChannelRequest {
                 recipient_channel,
                 request_type,
                 want_reply,
+                extra,
             })
         }
         99 => {
@@ -667,11 +698,41 @@ pub fn write_message(message: Message) -> anyhow::Result<Vec<u8>> {
             recipient_channel,
             request_type,
             want_reply,
+            extra,
         } => {
             buf.write_u8(98)?;
             buf.write_u32::<BE>(recipient_channel)?;
             write_string(&mut buf, &request_type)?;
             buf.write_u8(if want_reply { 1 } else { 0 })?;
+            match extra {
+                ChannelRequestExtra::Terminal {
+                    terminal_type,
+                    width_columns,
+                    height_rows,
+                    width_pixels,
+                    height_pixels,
+                    terminal_modes,
+                } => {
+                    write_string(&mut buf, &terminal_type)?;
+                    buf.write_u32::<BE>(width_columns)?;
+                    buf.write_u32::<BE>(height_rows)?;
+                    buf.write_u32::<BE>(width_pixels)?;
+                    buf.write_u32::<BE>(height_pixels)?;
+                    write_bytes(&mut buf, &terminal_modes)?;
+                }
+                ChannelRequestExtra::WindowChange {
+                    width_columns,
+                    height_rows,
+                    width_pixels,
+                    height_pixels,
+                } => {
+                    buf.write_u32::<BE>(width_columns)?;
+                    buf.write_u32::<BE>(height_rows)?;
+                    buf.write_u32::<BE>(width_pixels)?;
+                    buf.write_u32::<BE>(height_pixels)?;
+                }
+                ChannelRequestExtra::None => todo!(),
+            }
         }
         Message::ChannelSuccess { recipient_channel } => {
             buf.write_u8(99)?;

@@ -34,8 +34,9 @@ use url::Url;
 
 use crate::{
     crawl::{ImageSource, PostPart, SiteData},
-    protocols::ssh::connection::ReadConnection,
+    protocols::ssh::{connection::ReadConnection, protocol::ChannelRequestExtra},
     shared::MATDOESDEV_ASCII_ART,
+    terminal::TerminalSession,
     HOSTNAME,
 };
 
@@ -217,8 +218,8 @@ async fn connection(
     // the session ID is the exchange hash from the first key exchange, and then never changes after that
     let session_id: Vec<u8>;
     // this one does change every key exchange
-    let mut exchange_hash: Vec<u8>;
-    let mut encryption_keys: crypto::EncryptionKeys;
+    let exchange_hash: Vec<u8>;
+    let encryption_keys: crypto::EncryptionKeys;
 
     loop {
         let packet = read.read_packet().await?;
@@ -319,6 +320,8 @@ async fn connection(
     )
     .await?;
 
+    let mut terminal_session = TerminalSession::new();
+
     while let Ok(packet) = read.read_packet().await {
         println!("packet: {packet:?}");
         match packet {
@@ -326,11 +329,11 @@ async fn connection(
                 if service_name == "ssh-userauth" {
                     conn.write_packet(protocol::Message::ServiceAccept { service_name })
                         .await?;
-                    conn.write_packet(protocol::Message::UserauthBanner {
-                        message: format!("{MATDOESDEV_ASCII_ART}\n\n\n"),
-                        language_tag: "english probably".to_string(),
-                    })
-                    .await?;
+                    // conn.write_packet(protocol::Message::UserauthBanner {
+                    //     message: format!("hi chat\n"),
+                    //     language_tag: "english probably".to_string(),
+                    // })
+                    // .await?;
                 } else {
                     bail!("unsupported service: {service_name}");
                 }
@@ -379,14 +382,66 @@ async fn connection(
                 recipient_channel,
                 request_type,
                 want_reply,
+                extra,
             } => {
                 println!(
                     "channel request: recipient_channel: {recipient_channel}, request_type: {request_type}, want_reply: {want_reply}"
                 );
-                if request_type == "pty-req" {
+                match extra {
+                    ChannelRequestExtra::Terminal {
+                        terminal_type,
+                        width_columns,
+                        height_rows,
+                        width_pixels,
+                        height_pixels,
+                        terminal_modes,
+                    } => {
+                        terminal_session.resize(width_columns, height_rows);
+                        let data = terminal_session.on_connect();
+                        if !data.is_empty() {
+                            conn.write_packet(protocol::Message::ChannelData {
+                                recipient_channel,
+                                data,
+                            })
+                            .await?;
+                        }
+                    }
+                    ChannelRequestExtra::WindowChange {
+                        width_columns,
+                        height_rows,
+                        width_pixels,
+                        height_pixels,
+                    } => {
+                        let data = terminal_session.resize(width_columns, height_rows);
+                        if !data.is_empty() {
+                            conn.write_packet(protocol::Message::ChannelData {
+                                recipient_channel,
+                                data,
+                            })
+                            .await?;
+                        }
+                    }
+                    ChannelRequestExtra::None => {}
+                }
+            }
+            protocol::Message::ChannelData {
+                recipient_channel,
+                data,
+            } => {
+                println!("channel data: recipient_channel: {recipient_channel}, data: {data:?}");
+                if data == [3] || data == [4] {
                     conn.write_packet(protocol::Message::ChannelData {
                         recipient_channel,
-                        data: b"holy moly it's working!!!\n".to_vec(),
+                        data: "Bye!\r\n".as_bytes().to_vec(),
+                    })
+                    .await?;
+                    break;
+                }
+                let data = terminal_session.on_keystroke(&data);
+                if !data.is_empty() {
+                    conn.write_packet(protocol::Message::ChannelData {
+                        recipient_channel,
+                        data,
                     })
                     .await?;
                 }

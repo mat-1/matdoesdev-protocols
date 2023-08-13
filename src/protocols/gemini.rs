@@ -43,6 +43,7 @@ This portfolio contains my blog posts and links to some of the projects I've mad
 
 => https://github.com/mat-1 GitHub
 => https://matrix.to/#/@mat:matdoes.dev Matrix
+=> https://ko-fi.com/matdoesdev Ko-fi (donate)
 "#;
 
 #[derive(Clone)]
