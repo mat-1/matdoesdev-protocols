@@ -35,7 +35,6 @@ use url::Url;
 use crate::{
     crawl::{ImageSource, PostPart, SiteData},
     protocols::ssh::{connection::ReadConnection, protocol::ChannelRequestExtra},
-    shared::MATDOESDEV_ASCII_ART,
     terminal::TerminalSession,
     HOSTNAME,
 };

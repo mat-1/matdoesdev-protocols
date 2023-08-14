@@ -8,7 +8,6 @@ use crate::protocols::Protocol;
 
 mod crawl;
 mod protocols;
-pub mod shared;
 pub mod terminal;
 
 const HOSTNAME: &str = "matdoes.dev";
