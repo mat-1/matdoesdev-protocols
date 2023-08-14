@@ -2,22 +2,15 @@ pub mod connection;
 mod crypto;
 mod protocol;
 
-use std::{
-    collections::HashMap,
-    io::{self, Cursor, Read, Write},
-    path::Path,
-    sync::Arc,
-};
+use std::io::Cursor;
 
 use aes::{
     cipher::{IvSizeUser, KeyIvInit, KeySizeUser, StreamCipher},
     Aes128,
 };
 use anyhow::bail;
-use byteorder::{ReadBytesExt, WriteBytesExt, BE};
 use ctr::Ctr128BE;
 use curve25519_dalek::constants::ED25519_BASEPOINT_TABLE;
-use ed25519_dalek::Signer;
 use futures_util::StreamExt;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
@@ -25,18 +18,15 @@ use tokio::{
     io::AsyncWriteExt,
     net::{
         tcp::{OwnedReadHalf, OwnedWriteHalf},
-        TcpListener, TcpStream,
+        TcpListener,
     },
 };
-use tokio_rustls::server::TlsStream;
 use tokio_util::codec::{BytesCodec, FramedRead};
-use url::Url;
 
 use crate::{
-    crawl::{ImageSource, PostPart, SiteData},
+    crawl::SiteData,
     protocols::ssh::{connection::ReadConnection, protocol::ChannelRequestExtra},
     terminal::TerminalSession,
-    HOSTNAME,
 };
 
 use super::Protocol;
@@ -45,17 +35,19 @@ const BIND_HOST: &str = "[::]";
 const BIND_PORT: u16 = 2222;
 
 #[derive(Clone)]
-pub struct Ssh {}
+pub struct Ssh {
+    pub site_data: SiteData,
+}
 
 impl Protocol for Ssh {
     fn generate(data: &SiteData) -> Self {
-        Ssh {}
+        Ssh {
+            site_data: data.clone(),
+        }
     }
 
     async fn serve(self) {
         // start a tcp server
-
-        let ssh = Arc::new(self);
 
         let listener = TcpListener::bind(format!("{BIND_HOST}:{BIND_PORT}"))
             .await
@@ -65,11 +57,12 @@ impl Protocol for Ssh {
             let (stream, _) = listener.accept().await.unwrap();
             println!("started tcp connection");
 
-            let (read, mut write) = stream.into_split();
-            let mut framed = FramedRead::new(read, BytesCodec::new());
+            let (read, write) = stream.into_split();
+            let framed = FramedRead::new(read, BytesCodec::new());
 
+            let site_data = self.site_data.clone();
             tokio::spawn(async move {
-                match connection(framed, write).await {
+                match connection(framed, write, site_data).await {
                     Ok(_) => {}
                     Err(e) => {
                         println!("error: {}", e);
@@ -121,8 +114,8 @@ pub struct EncryptedConnection {
 impl EncryptedConnection {
     pub async fn new(
         write: OwnedWriteHalf,
-        exchange_hash: Vec<u8>,
-        session_id: Vec<u8>,
+        _exchange_hash: Vec<u8>,
+        _session_id: Vec<u8>,
         encryption_keys: &crypto::EncryptionKeys,
 
         sequence_number_server_to_client: u32,
@@ -164,6 +157,7 @@ impl EncryptedConnection {
 async fn connection(
     mut read: FramedRead<OwnedReadHalf, BytesCodec>,
     mut write: OwnedWriteHalf,
+    site_data: SiteData,
 ) -> anyhow::Result<()> {
     let server_id = "SSH-2.0-matssh_1.0";
     let keypair = crypto::ed25519::load_keypair();
@@ -319,7 +313,7 @@ async fn connection(
     )
     .await?;
 
-    let mut terminal_session = TerminalSession::new();
+    let mut terminal_session = TerminalSession::new(site_data);
 
     while let Ok(packet) = read.read_packet().await {
         println!("packet: {packet:?}");
@@ -349,8 +343,8 @@ async fn connection(
             }
             protocol::Message::UserauthRequest {
                 username,
-                service_name,
-                authentication_method,
+                service_name: _,
+                authentication_method: _,
             } => {
                 println!("user {username} is connecting");
                 conn.write_packet(protocol::Message::UserauthSuccess)
@@ -388,12 +382,12 @@ async fn connection(
                 );
                 match extra {
                     ChannelRequestExtra::Terminal {
-                        terminal_type,
+                        terminal_type: _,
                         width_columns,
                         height_rows,
-                        width_pixels,
-                        height_pixels,
-                        terminal_modes,
+                        width_pixels: _,
+                        height_pixels: _,
+                        terminal_modes: _,
                     } => {
                         let data = terminal_session.resize(width_columns, height_rows);
                         if !data.is_empty() {
@@ -407,8 +401,8 @@ async fn connection(
                     ChannelRequestExtra::WindowChange {
                         width_columns,
                         height_rows,
-                        width_pixels,
-                        height_pixels,
+                        width_pixels: _,
+                        height_pixels: _,
                     } => {
                         let data = terminal_session.resize(width_columns, height_rows);
                         if !data.is_empty() {
@@ -447,7 +441,11 @@ async fn connection(
             protocol::Message::ChannelWindowAdjust {
                 recipient_channel,
                 bytes_to_add,
-            } => {}
+            } => {
+                println!(
+                    "channel window adjust: recipient_channel: {recipient_channel}, bytes_to_add: {bytes_to_add}"
+                );
+            }
             _ => println!("unexpected message"),
         }
     }

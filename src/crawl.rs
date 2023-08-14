@@ -15,13 +15,13 @@ use tokio::fs;
 const CRAWL_SCHEME: &str = "https";
 const CRAWL_HOSTNAME: &str = "matdoes.dev";
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct SiteData {
     pub projects: Vec<Project>,
     pub blog: Vec<Post>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Project {
     pub name: String,
     pub href: Option<String>,
@@ -31,7 +31,7 @@ pub struct Project {
     pub description: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum LanguageName {
     Python,
@@ -52,7 +52,7 @@ impl Display for LanguageName {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Post {
     pub title: String,
     pub slug: String,
@@ -60,7 +60,7 @@ pub struct Post {
     pub content: Vec<PostPart>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PostPart {
     Text(String),
     InlineCode(String),
@@ -82,7 +82,7 @@ pub enum PostPart {
     },
     Quote(String),
 }
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ImageSource {
     Local(PathBuf),
     Remote(String),

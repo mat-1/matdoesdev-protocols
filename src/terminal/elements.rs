@@ -41,35 +41,36 @@ pub struct Position {
     pub y: usize,
 }
 
+#[derive(Debug, Clone)]
+pub struct Data {
+    pub links: Vec<Location>,
+    pub link_index: Option<usize>,
+}
+
 const RESET: &str = "\x1b[m";
-const LINK_COLOR: &str = "\x1b[38;2;13;199;249m";
 fn move_cursor(pos: &Position) -> String {
     // 1-indexed
     format!("\x1b[{};{}H", pos.y + 1, pos.x + 1)
 }
 
 impl Element {
-    pub fn render(&self, pos: &mut Position, parent_rect: &Rectangle) -> String {
+    pub fn render(&self, pos: &mut Position, parent_rect: &Rectangle, data: &mut Data) -> String {
         let mut result = String::new();
         match self {
             Element::Text(text) => {
-                println!("{pos:?}");
                 let mut word = String::new();
                 for c in text.chars() {
-                    println!("> {c:?}");
                     if c == ' ' {
-                        if pos.x + word.len() > parent_rect.left + parent_rect.width {
+                        if pos.x + word.chars().count() > parent_rect.left + parent_rect.width {
                             pos.x = parent_rect.left;
                             pos.y += 1;
-                            println!("word wrap {pos:?}");
                         }
                         result.push_str(&move_cursor(pos));
                         result.push_str(&word);
-                        pos.x += word.len() + 1;
+                        pos.x += word.chars().count() + 1;
                         word = String::new();
-                        println!("word {pos:?}");
                     } else if c == '\n' {
-                        if pos.x + word.len() > parent_rect.left + parent_rect.width {
+                        if pos.x + word.chars().count() > parent_rect.left + parent_rect.width {
                             pos.x = parent_rect.left;
                             pos.y += 1;
                         }
@@ -79,23 +80,22 @@ impl Element {
 
                         pos.x = parent_rect.left;
                         pos.y += 1;
-                        println!("newline {pos:?}");
                     } else {
                         word.push(c);
                     }
                 }
-                if pos.x + word.len() > parent_rect.left + parent_rect.width {
+                if pos.x + word.chars().count() > parent_rect.left + parent_rect.width {
                     pos.x = parent_rect.left;
                     pos.y += 1;
                 }
                 result.push_str(&move_cursor(pos));
                 result.push_str(&word);
-                pos.x += word.len();
+                pos.x += word.chars().count();
             }
             Element::Centered(inner) => {
                 // render once to get length
                 let initial_pos = pos.clone();
-                inner.render(pos, &parent_rect);
+                inner.render(pos, &parent_rect, &mut data.clone());
 
                 let length = if initial_pos.y == pos.y {
                     pos.x - initial_pos.x
@@ -112,31 +112,35 @@ impl Element {
                     height: parent_rect.height,
                 };
                 pos.x = rect.left;
-                result.push_str(&inner.render(pos, &rect));
+                result.push_str(&inner.render(pos, &rect, data));
             }
             Element::Rectangle { elements, rect } => {
                 for element in elements {
-                    let element_rendered = element.render(pos, rect);
+                    let element_rendered = element.render(pos, rect, data);
                     result.push_str(&element_rendered);
                 }
             }
             Element::Container(elements) => {
                 for element in elements {
-                    let element_rendered = element.render(pos, parent_rect);
+                    let element_rendered = element.render(pos, parent_rect, data);
                     result.push_str(&element_rendered);
                 }
             }
 
             Element::Link { inner, location } => {
-                result.push_str(LINK_COLOR);
-                result.push_str(&inner.render(pos, parent_rect));
-                result.push_str(RESET);
-                // result
-                //     .push_str(&Element::Text(format!(" ({location:?})")).render(pos, parent_rect));
+                data.links.push(location.clone());
+                let selected = data.link_index == Some(data.links.len() - 1);
+                if selected {
+                    result.push_str("\x1b[1m");
+                }
+                result.push_str(&inner.render(pos, parent_rect, data));
+                if selected {
+                    result.push_str(RESET);
+                }
             }
             Element::ExternalLink { inner, url } => {
                 result.push_str(&format!("\x1b]8;;{url}\x1b\\"));
-                result.push_str(&inner.render(pos, parent_rect));
+                result.push_str(&inner.render(pos, parent_rect, data));
                 result.push_str("\x1b]8;;\x1b\\");
             }
 
@@ -144,7 +148,7 @@ impl Element {
                 result.push_str("\x1b[");
                 result.push_str(format);
                 result.push_str("m");
-                result.push_str(&inner.render(pos, parent_rect));
+                result.push_str(&inner.render(pos, parent_rect, data));
                 result.push_str(RESET);
             }
         }
@@ -154,8 +158,8 @@ impl Element {
 
 pub mod prelude {
     pub use super::{
-        bold, centered, container, external_link, gray, link, rectangle, text, Element, Position,
-        Rectangle,
+        bold, centered, colorless_link, container, external_link, gray, italic, link, rectangle,
+        reset, text, white, Element, Position, Rectangle,
     };
 }
 
@@ -172,6 +176,15 @@ pub fn container(elements: Vec<Element>) -> Element {
     Element::Container(elements)
 }
 pub fn link(inner: Element, location: Location) -> Element {
+    Element::Formatted {
+        inner: Box::new(Element::Link {
+            inner: Box::new(inner),
+            location,
+        }),
+        format: "38;2;13;199;249".to_string(),
+    }
+}
+pub fn colorless_link(inner: Element, location: Location) -> Element {
     Element::Link {
         inner: Box::new(inner),
         location,
@@ -200,5 +213,17 @@ pub fn gray(inner: Element) -> Element {
     Element::Formatted {
         inner: Box::new(inner),
         format: "90".to_string(),
+    }
+}
+pub fn white(inner: Element) -> Element {
+    Element::Formatted {
+        inner: Box::new(inner),
+        format: "97".to_string(),
+    }
+}
+pub fn reset(inner: Element) -> Element {
+    Element::Formatted {
+        inner: Box::new(inner),
+        format: "".to_string(),
     }
 }
