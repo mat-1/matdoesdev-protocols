@@ -332,6 +332,18 @@ async fn connection(
                     recipient_channel: sender_channel,
                 })
                 .await?;
+
+                let mut out = String::new();
+                // hide the cursor
+                out.push_str("\x1b[?25l");
+                // don't line wrap
+                out.push_str("\x1b[?7l");
+                // click detection
+                out.push_str("\x1b[?1003h");
+                // mouse movement detection
+                out.push_str("\x1b[?1006h");
+
+                conn.write_data(out.as_bytes(), sender_channel).await?;
             }
             protocol::Message::ChannelRequest {
                 recipient_channel,
@@ -367,8 +379,16 @@ async fn connection(
             } => {
                 println!("channel data: recipient_channel: {recipient_channel}, data: {data:?}");
                 if data == [3] || data == [4] {
-                    conn.write_data("Bye!\r\n".as_bytes(), recipient_channel)
-                        .await?;
+                    // ^C or ^D
+
+                    // give them their cursor back lol
+                    let mut out = String::new();
+                    out.push_str("\x1b[?25h");
+                    out.push_str("\x1b[?7h");
+                    out.push_str("\x1b[?1003l");
+                    out.push_str("\x1b[?1006l");
+                    out.push_str("Bye!\r\n");
+                    conn.write_data(out.as_bytes(), recipient_channel).await?;
                     break;
                 }
                 let data = terminal_session.on_keystroke(&data);

@@ -88,7 +88,7 @@ impl TerminalSession {
             Location::Index => index_page(&self.ctx),
             Location::Blog => blog_page(&self.ctx),
             Location::BlogPost { slug } => blog_post_page(&self.ctx, slug),
-            Location::Projects => todo!(),
+            Location::Projects => projects_page(&self.ctx),
         }
     }
 }
@@ -142,42 +142,45 @@ fn index_page(ctx: &Context) -> Page {
         ctx,
         50,
         vec![
-            // title
-            text("\n"),
-            bold(centered(white(text("matdoesdev")))),
-            text("\n\n"),
+            vertically_centered(container(vec![
+                // title
+                text("\n"),
+                bold(horizontally_centered(white(text("matdoesdev")))),
+                text("\n\n"),
 
-            // socials
-            centered(gray(container(vec![
-                text("GitHub: "),
-                external_link(text("mat-1"), "https://github.com/mat-1"),
-            ]))),
-            text("\n"),
-            centered(gray(container(vec![
-                text("Matrix: "),
-                external_link(text("@mat:matdoes.dev"), "https://matrix.to/#/@mat:matdoes.dev"),
-            ]))),
-            text("\n"),
-            centered(gray(container(vec![
-                text("Ko-fi (donate): "),
-                external_link(text("matdoesdev"), "https://ko-fi.com/matdoesdev"),
-            ]))),
+                // socials
+                horizontally_centered(gray(container(vec![
+                    text("GitHub: "),
+                    external_link(text("mat-1"), "https://github.com/mat-1"),
+                ]))),
+                text("\n"),
+                horizontally_centered(gray(container(vec![
+                    text("Matrix: "),
+                    external_link(text("@mat:matdoes.dev"), "https://matrix.to/#/@mat:matdoes.dev"),
+                ]))),
+                text("\n"),
+                horizontally_centered(gray(container(vec![
+                    text("Ko-fi (donate): "),
+                    external_link(text("matdoesdev"), "https://ko-fi.com/matdoesdev"),
+                ]))),
 
-            text("\n\n"),
+                text("\n\n"),
 
-            // description
-            text("I'm mat, I do full-stack software development.\n"),
-            text("This portfolio contains my blog posts and links to some of the projects I've made.\n"),
-            text("\n"),
+                // description
+                text("I'm mat, I do full-stack software development.\n"),
+                text("This portfolio contains my blog posts and links to some of the projects I've made.\n"),
+                text("\n"),
 
-            // links
-            centered(container(vec![
-                link(text("[Blog]"), Location::Blog),
-                text(" "),
-                link(text("[Projects]"), Location::Projects),
+                // links
+                horizontally_centered(container(vec![
+                    link(text("[Blog]"), Location::Blog),
+                    text(" "),
+                    link(text("[Projects]"), Location::Projects),
+                ])),
+                text("\n"),
             ])),
-            text("\n\n\n\n\n\n"),
-            italic(gray(centered(text("(use tab to navigate links, enter to select)")))),
+            text("\n\n\n\n"),
+            italic(gray(horizontally_centered(text("(use tab to navigate links, enter to select)")))),
         ],
     )
 }
@@ -283,4 +286,43 @@ fn blog_post_page(ctx: &Context, slug: &str) -> Page {
     }
 
     Page::new(ctx, 80, elements)
+}
+
+fn projects_page(ctx: &Context) -> Page {
+    let mut elements = vec![
+        text("\n"),
+        link(gray(text("← Home")), Location::Index),
+        text("\n\n"),
+        bold(white(text("Projects"))),
+        text("\n\n"),
+    ];
+    for project in &ctx.site_data.projects {
+        let mut project_name = bold(text(&project.name));
+        if let Some(href) = &project.href {
+            project_name = external_link(project_name, href);
+        }
+        elements.push(project_name);
+        if let Some(source) = &project.source {
+            elements.push(text(" "));
+            elements.push(gray(external_link(text("(Source)"), source)));
+        }
+        elements.push(text("\n"));
+        if !project.languages.is_empty() {
+            elements.push(gray(text(&format!(
+                "Languages: {}",
+                project
+                    .languages
+                    .iter()
+                    .map(|l| l.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))));
+            elements.push(text("\n"));
+        }
+        elements.push(text(&project.description));
+
+        elements.push(text("\n\n"));
+    }
+
+    Page::new(ctx, 50, elements)
 }

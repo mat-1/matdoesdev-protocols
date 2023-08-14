@@ -3,7 +3,8 @@ use super::Location;
 pub enum Element {
     // core
     Text(String),
-    Centered(Box<Element>),
+    HorizontallyCentered(Box<Element>),
+    VerticallyCentered(Box<Element>),
     Rectangle {
         elements: Vec<Element>,
         rect: Rectangle,
@@ -89,26 +90,43 @@ impl Element {
                 }
                 flush_word(pos, &mut word, parent_rect, &mut result);
             }
-            Element::Centered(inner) => {
+            Element::HorizontallyCentered(inner) => {
                 // render once to get length
                 let initial_pos = pos.clone();
                 inner.render(pos, &parent_rect, &mut data.clone());
 
-                let length = if initial_pos.y == pos.y {
+                let width = if initial_pos.y == pos.y {
                     pos.x - initial_pos.x
                 } else {
                     // if it wrapped to a new line, use the parent width
                     parent_rect.width
                 };
 
-                let left = parent_rect.left + (parent_rect.width - length) / 2;
+                let left = parent_rect.left + (parent_rect.width - width) / 2;
                 let rect = Rectangle {
                     left,
                     top: parent_rect.top,
-                    width: length,
+                    width,
                     height: parent_rect.height,
                 };
                 pos.x = rect.left;
+                result.push_str(&inner.render(pos, &rect, data));
+            }
+            Element::VerticallyCentered(inner) => {
+                // render once to get height
+                let initial_pos = pos.clone();
+                inner.render(pos, &parent_rect, &mut data.clone());
+
+                let height = usize::min(pos.y - initial_pos.y, parent_rect.height);
+
+                let top = parent_rect.top + (parent_rect.height - height) / 2;
+                let rect = Rectangle {
+                    left: parent_rect.left,
+                    top,
+                    width: parent_rect.width,
+                    height,
+                };
+                pos.y = rect.top;
                 result.push_str(&inner.render(pos, &rect, data));
             }
             Element::Rectangle { elements, rect } => {
@@ -157,16 +175,19 @@ impl Element {
 
 pub mod prelude {
     pub use super::{
-        bold, centered, colorless_link, container, external_link, gray, italic, link, rectangle,
-        reset, text, white, Element, Position, Rectangle,
+        bold, colorless_link, container, external_link, gray, horizontally_centered, italic, link,
+        rectangle, reset, text, vertically_centered, white, Element, Position, Rectangle,
     };
 }
 
 pub fn text(text: &str) -> Element {
     Element::Text(text.to_string())
 }
-pub fn centered(inner: Element) -> Element {
-    Element::Centered(Box::new(inner))
+pub fn horizontally_centered(inner: Element) -> Element {
+    Element::HorizontallyCentered(Box::new(inner))
+}
+pub fn vertically_centered(inner: Element) -> Element {
+    Element::VerticallyCentered(Box::new(inner))
 }
 pub fn rectangle(elements: Vec<Element>, rect: Rectangle) -> Element {
     Element::Rectangle { elements, rect }
