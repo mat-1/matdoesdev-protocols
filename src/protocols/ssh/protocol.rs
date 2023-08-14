@@ -155,71 +155,6 @@ pub enum ChannelRequestExtra {
     None,
 }
 
-pub fn read_payload(
-    data: &mut Cursor<Vec<u8>>,
-    cipher: &mut Option<Ctr128BE<Aes128>>,
-    has_mac: bool,
-) -> anyhow::Result<Vec<u8>> {
-    let packet_length;
-
-    {
-        let mut data_cloned = data.remaining_slice().to_vec();
-        if data_cloned.len() < 4 {
-            bail!("not enough data for packet length yet");
-        }
-
-        if let Some(cipher) = cipher {
-            // decrypt the packet!
-            // the MAC part isn't supposed to be decrypted but this is simpler and i don't check integrity anyways
-
-            // decrypt the packet length first (clone so it doesn't modify the cipher in case it fails)
-            cipher.clone().apply_keystream(&mut data_cloned[0..4]);
-            packet_length = u32::from_be_bytes([
-                data_cloned[0],
-                data_cloned[1],
-                data_cloned[2],
-                data_cloned[3],
-            ]) as usize;
-        } else {
-            packet_length = Cursor::new(data_cloned).read_u32::<BE>()? as usize;
-        }
-    }
-
-    let entire_packet_length = packet_length + 4;
-
-    // 4 extra bytes for the packet length, 32 for mac
-    if data.remaining_slice().len() < entire_packet_length {
-        bail!("not enough data yet");
-    }
-
-    let mut bytes = vec![0; entire_packet_length];
-    data.read_exact(&mut bytes)?;
-    if let Some(cipher) = cipher {
-        cipher.apply_keystream(&mut bytes);
-    }
-    let mut bytes = Cursor::new(bytes);
-
-    // read the length again
-    let _ = bytes.read_u32::<BE>();
-    let padding_length = bytes.read_u8()? as usize;
-
-    let payload_length = packet_length - padding_length - 1;
-    let mut payload = Vec::new();
-    for _ in 0..payload_length {
-        payload.push(bytes.read_u8()?);
-    }
-    let mut padding = vec![0; padding_length];
-    bytes.read_exact(&mut padding)?;
-
-    if has_mac {
-        // read 32 bytes
-        let mut mac = [0u8; 32];
-        data.read_exact(&mut mac)?;
-    }
-
-    Ok(payload)
-}
-
 pub fn write_payload(
     payload: Vec<u8>,
     cipher_block_key_size: Option<usize>,
@@ -253,7 +188,6 @@ pub fn write_packet(
 
 pub fn read_message(mut data: impl Read) -> anyhow::Result<Message> {
     let message_type = data.read_u8()?;
-    println!("message_type {message_type}");
     match message_type {
         1 => {
             let reason_code = data.read_u32::<BE>()?;
