@@ -361,16 +361,16 @@ async fn connection(
                 channel_type,
                 sender_channel,
                 initial_window_size,
-                max_packet_size,
+                maximum_packet_size,
             } => {
                 println!(
-                    "channel open: channel_type: {channel_type}, sender_channel: {sender_channel}, initial_window_size: {initial_window_size}, max_packet_size: {max_packet_size}"
+                    "channel open: channel_type: {channel_type}, sender_channel: {sender_channel}, initial_window_size: {initial_window_size}, maximum_packet_size: {maximum_packet_size}"
                 );
                 conn.write_packet(protocol::Message::ChannelOpenConfirmation {
                     recipient_channel: sender_channel,
                     sender_channel: 0,
-                    initial_window_size: 0x100000,
-                    maximum_packet_size: 0x4000,
+                    initial_window_size,
+                    maximum_packet_size,
                 })
                 .await?;
                 conn.write_packet(protocol::Message::ChannelSuccess {
@@ -396,8 +396,7 @@ async fn connection(
                         height_pixels,
                         terminal_modes,
                     } => {
-                        terminal_session.resize(width_columns, height_rows);
-                        let data = terminal_session.on_connect();
+                        let data = terminal_session.resize(width_columns, height_rows);
                         if !data.is_empty() {
                             conn.write_packet(protocol::Message::ChannelData {
                                 recipient_channel,
@@ -446,7 +445,11 @@ async fn connection(
                     .await?;
                 }
             }
-            _ => bail!("unexpected message"),
+            protocol::Message::ChannelWindowAdjust {
+                recipient_channel,
+                bytes_to_add,
+            } => {}
+            _ => println!("unexpected message"),
         }
     }
 

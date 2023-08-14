@@ -87,7 +87,7 @@ pub enum Message {
         channel_type: String,
         sender_channel: u32,
         initial_window_size: u32,
-        max_packet_size: u32,
+        maximum_packet_size: u32,
         // depends
     } = 90,
     ChannelOpenConfirmation {
@@ -247,7 +247,6 @@ pub fn write_packet(
     packet: Message,
     cipher_block_key_size: Option<usize>,
 ) -> anyhow::Result<Vec<u8>> {
-    println!("writing packet: {:?}", packet);
     let payload = write_message(packet)?;
     write_payload(payload, cipher_block_key_size)
 }
@@ -390,7 +389,7 @@ pub fn read_message(mut data: impl Read) -> anyhow::Result<Message> {
                 channel_type,
                 sender_channel,
                 initial_window_size,
-                max_packet_size,
+                maximum_packet_size: max_packet_size,
             })
         }
         91 => {
@@ -628,7 +627,7 @@ pub fn write_message(message: Message) -> anyhow::Result<Vec<u8>> {
             channel_type,
             sender_channel,
             initial_window_size,
-            max_packet_size,
+            maximum_packet_size: max_packet_size,
         } => {
             buf.write_u8(90)?;
             write_string(&mut buf, &channel_type)?;
