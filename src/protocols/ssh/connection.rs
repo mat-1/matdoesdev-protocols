@@ -1,14 +1,25 @@
-use std::io::{Cursor, Read};
+use std::{
+    collections::HashMap,
+    io::{Cursor, Read},
+};
 
 use aes::{
-    cipher::{KeyIvInit, StreamCipher},
+    cipher::{KeyIvInit, KeySizeUser, StreamCipher},
     Aes128,
 };
 use byteorder::ReadBytesExt;
 use ctr::Ctr128BE;
-use tokio::{io::AsyncReadExt, net::tcp::OwnedReadHalf};
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::tcp::{OwnedReadHalf, OwnedWriteHalf},
+};
 
-use super::protocol::{self, read_message};
+use super::{
+    crypto,
+    protocol::{self, read_message},
+};
 
 pub struct ReadConnection {
     pub read: OwnedReadHalf,
@@ -90,5 +101,88 @@ impl ReadConnection {
         let message = read_message(Cursor::new(payload))?;
 
         Ok(message)
+    }
+}
+
+pub struct EncryptedConnection {
+    write: OwnedWriteHalf,
+
+    cipher_server_to_client: Ctr128BE<Aes128>,
+    integrity_key_server_to_client: Vec<u8>,
+    sequence_number_server_to_client: u32,
+
+    pub channels: HashMap<u32, Channel>,
+}
+pub struct Channel {
+    pub recipient_window_size: u32,
+    pub sender_window_size: u32,
+
+    pub recipient_maximum_packet_size: u32,
+    pub sender_maximum_packet_size: u32,
+}
+
+impl EncryptedConnection {
+    pub async fn new(
+        write: OwnedWriteHalf,
+        _exchange_hash: Vec<u8>,
+        _session_id: Vec<u8>,
+        encryption_keys: &crypto::EncryptionKeys,
+
+        sequence_number_server_to_client: u32,
+    ) -> anyhow::Result<Self> {
+        let cipher_server_to_client = Ctr128BE::<Aes128>::new(
+            &<[u8; 16]>::try_from(encryption_keys.encryption_key_server_to_client.clone())
+                .unwrap()
+                .into(),
+            &<[u8; 16]>::try_from(encryption_keys.initial_iv_server_to_client.clone())
+                .unwrap()
+                .into(),
+        );
+
+        Ok(Self {
+            write,
+            cipher_server_to_client,
+            integrity_key_server_to_client: encryption_keys.integrity_key_server_to_client.clone(),
+            sequence_number_server_to_client,
+            channels: HashMap::new(),
+        })
+    }
+
+    pub async fn write_packet(&mut self, packet: protocol::Message) -> anyhow::Result<()> {
+        let mut bytes = protocol::write_packet(packet, Some(Ctr128BE::<Aes128>::key_size()))?;
+
+        // write mac
+        let mut mac = Hmac::<Sha256>::new_from_slice(&self.integrity_key_server_to_client)?;
+        mac.update(&self.sequence_number_server_to_client.to_be_bytes());
+        mac.update(&bytes);
+
+        self.cipher_server_to_client.apply_keystream(&mut bytes);
+        self.write.write_all(&bytes).await?;
+        self.write.write_all(&mac.finalize().into_bytes()).await?;
+        self.sequence_number_server_to_client += 1;
+
+        Ok(())
+    }
+
+    pub async fn write_data(&mut self, data: &[u8], recipient_channel: u32) -> anyhow::Result<()> {
+        if let Some(channel) = self.channels.get_mut(&recipient_channel) {
+            channel.recipient_window_size -= data.len() as u32;
+        }
+
+        let max_packet_size = self
+            .channels
+            .get(&recipient_channel)
+            .map(|channel| channel.recipient_maximum_packet_size)
+            .unwrap_or(32768);
+
+        for chunk in data.chunks(max_packet_size as usize) {
+            self.write_packet(protocol::Message::ChannelData {
+                recipient_channel,
+                data: chunk.to_vec(),
+            })
+            .await?;
+        }
+
+        Ok(())
     }
 }

@@ -53,6 +53,17 @@ fn move_cursor(pos: &Position) -> String {
     format!("\x1b[{};{}H", pos.y + 1, pos.x + 1)
 }
 
+fn flush_word(pos: &mut Position, word: &mut String, parent_rect: &Rectangle, result: &mut String) {
+    if pos.x + word.chars().count() > parent_rect.left + parent_rect.width {
+        pos.x = parent_rect.left;
+        pos.y += 1;
+    }
+    result.push_str(&move_cursor(pos));
+    result.push_str(&word);
+    pos.x += word.chars().count();
+    word.clear();
+}
+
 impl Element {
     pub fn render(&self, pos: &mut Position, parent_rect: &Rectangle, data: &mut Data) -> String {
         let mut result = String::new();
@@ -61,36 +72,22 @@ impl Element {
                 let mut word = String::new();
                 for c in text.chars() {
                     if c == ' ' {
-                        if pos.x + word.chars().count() > parent_rect.left + parent_rect.width {
-                            pos.x = parent_rect.left;
-                            pos.y += 1;
-                        }
-                        result.push_str(&move_cursor(pos));
-                        result.push_str(&word);
-                        pos.x += word.chars().count() + 1;
-                        word = String::new();
+                        flush_word(pos, &mut word, parent_rect, &mut result);
+                        result.push_str(&" ");
+                        pos.x += 1;
+                    } else if c == '\t' {
+                        flush_word(pos, &mut word, parent_rect, &mut result);
+                        result.push_str(&"    ");
+                        pos.x += 4;
                     } else if c == '\n' {
-                        if pos.x + word.chars().count() > parent_rect.left + parent_rect.width {
-                            pos.x = parent_rect.left;
-                            pos.y += 1;
-                        }
-                        result.push_str(&move_cursor(pos));
-                        result.push_str(&word);
-                        word = String::new();
-
+                        flush_word(pos, &mut word, parent_rect, &mut result);
                         pos.x = parent_rect.left;
                         pos.y += 1;
                     } else {
                         word.push(c);
                     }
                 }
-                if pos.x + word.chars().count() > parent_rect.left + parent_rect.width {
-                    pos.x = parent_rect.left;
-                    pos.y += 1;
-                }
-                result.push_str(&move_cursor(pos));
-                result.push_str(&word);
-                pos.x += word.chars().count();
+                flush_word(pos, &mut word, parent_rect, &mut result);
             }
             Element::Centered(inner) => {
                 // render once to get length
@@ -139,9 +136,11 @@ impl Element {
                 }
             }
             Element::ExternalLink { inner, url } => {
+                result.push_str("\x1b[4m"); // underline
                 result.push_str(&format!("\x1b]8;;{url}\x1b\\"));
                 result.push_str(&inner.render(pos, parent_rect, data));
                 result.push_str("\x1b]8;;\x1b\\");
+                result.push_str(RESET);
             }
 
             Element::Formatted { inner, format } => {

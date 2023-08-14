@@ -2,18 +2,15 @@ pub mod connection;
 mod crypto;
 mod protocol;
 
-use std::{collections::HashMap, io::Cursor};
+use std::io::Cursor;
 
 use aes::{
-    cipher::{IvSizeUser, KeyIvInit, KeySizeUser, StreamCipher},
+    cipher::{IvSizeUser, KeySizeUser},
     Aes128,
 };
 use anyhow::bail;
 use ctr::Ctr128BE;
 use curve25519_dalek::constants::ED25519_BASEPOINT_TABLE;
-use futures_util::StreamExt;
-use hmac::{Hmac, Mac};
-use sha2::Sha256;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{
@@ -21,11 +18,13 @@ use tokio::{
         TcpListener,
     },
 };
-use tokio_util::codec::{BytesCodec, FramedRead};
 
 use crate::{
     crawl::SiteData,
-    protocols::ssh::{connection::ReadConnection, protocol::ChannelRequestExtra},
+    protocols::ssh::{
+        connection::{Channel, EncryptedConnection, ReadConnection},
+        protocol::ChannelRequestExtra,
+    },
     terminal::TerminalSession,
 };
 
@@ -99,64 +98,6 @@ impl Protocol for Ssh {
             //     }
             // });
         }
-    }
-}
-
-pub struct EncryptedConnection {
-    write: OwnedWriteHalf,
-
-    cipher_server_to_client: Ctr128BE<Aes128>,
-    integrity_key_server_to_client: Vec<u8>,
-    sequence_number_server_to_client: u32,
-
-    channels: HashMap<u32, Channel>,
-}
-pub struct Channel {
-    recipient_window_size: u32,
-    sender_window_size: u32,
-}
-
-impl EncryptedConnection {
-    pub async fn new(
-        write: OwnedWriteHalf,
-        _exchange_hash: Vec<u8>,
-        _session_id: Vec<u8>,
-        encryption_keys: &crypto::EncryptionKeys,
-
-        sequence_number_server_to_client: u32,
-    ) -> anyhow::Result<Self> {
-        let cipher_server_to_client = Ctr128BE::<Aes128>::new(
-            &<[u8; 16]>::try_from(encryption_keys.encryption_key_server_to_client.clone())
-                .unwrap()
-                .into(),
-            &<[u8; 16]>::try_from(encryption_keys.initial_iv_server_to_client.clone())
-                .unwrap()
-                .into(),
-        );
-
-        Ok(Self {
-            write,
-            cipher_server_to_client,
-            integrity_key_server_to_client: encryption_keys.integrity_key_server_to_client.clone(),
-            sequence_number_server_to_client,
-            channels: HashMap::new(),
-        })
-    }
-
-    pub async fn write_packet(&mut self, packet: protocol::Message) -> anyhow::Result<()> {
-        let mut bytes = protocol::write_packet(packet, Some(Ctr128BE::<Aes128>::key_size()))?;
-
-        // write mac
-        let mut mac = Hmac::<Sha256>::new_from_slice(&self.integrity_key_server_to_client)?;
-        mac.update(&self.sequence_number_server_to_client.to_be_bytes());
-        mac.update(&bytes);
-
-        self.cipher_server_to_client.apply_keystream(&mut bytes);
-        self.write.write_all(&bytes).await?;
-        self.write.write_all(&mac.finalize().into_bytes()).await?;
-        self.sequence_number_server_to_client += 1;
-
-        Ok(())
     }
 }
 
@@ -376,6 +317,8 @@ async fn connection(
                     Channel {
                         recipient_window_size: initial_window_size,
                         sender_window_size: 2097152,
+                        recipient_maximum_packet_size: maximum_packet_size,
+                        sender_maximum_packet_size: 32768,
                     },
                 );
                 conn.write_packet(protocol::Message::ChannelOpenConfirmation {
@@ -392,8 +335,8 @@ async fn connection(
             }
             protocol::Message::ChannelRequest {
                 recipient_channel,
-                request_type,
-                want_reply,
+                request_type: _,
+                want_reply: _,
                 extra,
             } => match extra {
                 ChannelRequestExtra::Terminal {
@@ -405,17 +348,7 @@ async fn connection(
                     terminal_modes: _,
                 } => {
                     let data = terminal_session.resize(width_columns, height_rows);
-                    if !data.is_empty() {
-                        if let Some(channel) = conn.channels.get_mut(&recipient_channel) {
-                            channel.recipient_window_size -= data.len() as u32;
-                            println!("channel window size: {}", channel.recipient_window_size);
-                        }
-                        conn.write_packet(protocol::Message::ChannelData {
-                            recipient_channel,
-                            data,
-                        })
-                        .await?;
-                    }
+                    conn.write_data(&data, recipient_channel).await?;
                 }
                 ChannelRequestExtra::WindowChange {
                     width_columns,
@@ -424,17 +357,7 @@ async fn connection(
                     height_pixels: _,
                 } => {
                     let data = terminal_session.resize(width_columns, height_rows);
-                    if !data.is_empty() {
-                        if let Some(channel) = conn.channels.get_mut(&recipient_channel) {
-                            channel.recipient_window_size -= data.len() as u32;
-                            println!("channel window size: {}", channel.recipient_window_size);
-                        }
-                        conn.write_packet(protocol::Message::ChannelData {
-                            recipient_channel,
-                            data,
-                        })
-                        .await?;
-                    }
+                    conn.write_data(&data, recipient_channel).await?;
                 }
                 ChannelRequestExtra::None => {}
             },
@@ -444,25 +367,12 @@ async fn connection(
             } => {
                 println!("channel data: recipient_channel: {recipient_channel}, data: {data:?}");
                 if data == [3] || data == [4] {
-                    conn.write_packet(protocol::Message::ChannelData {
-                        recipient_channel,
-                        data: "Bye!\r\n".as_bytes().to_vec(),
-                    })
-                    .await?;
+                    conn.write_data("Bye!\r\n".as_bytes(), recipient_channel)
+                        .await?;
                     break;
                 }
                 let data = terminal_session.on_keystroke(&data);
-                if !data.is_empty() {
-                    if let Some(channel) = conn.channels.get_mut(&recipient_channel) {
-                        channel.recipient_window_size -= data.len() as u32;
-                        println!("channel window size: {}", channel.recipient_window_size);
-                    }
-                    conn.write_packet(protocol::Message::ChannelData {
-                        recipient_channel,
-                        data,
-                    })
-                    .await?;
-                }
+                conn.write_data(&data, recipient_channel).await?;
             }
             protocol::Message::ChannelWindowAdjust {
                 recipient_channel,

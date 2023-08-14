@@ -2,7 +2,7 @@ pub mod elements;
 
 use elements::prelude::*;
 
-use crate::crawl::SiteData;
+use crate::crawl::{ImageSource, PostPart, SiteData};
 
 /// A session for the terminal-based protocols (currently just ssh)
 pub struct TerminalSession {
@@ -177,7 +177,7 @@ fn index_page(ctx: &Context) -> Page {
                 link(text("[Projects]"), Location::Projects),
             ])),
             text("\n\n\n\n\n\n"),
-            italic(gray(text("(use tab to navigate links, enter to select)"))),
+            italic(gray(centered(text("(use tab to navigate links, enter to select)")))),
         ],
     )
 }
@@ -220,8 +220,67 @@ fn blog_post_page(ctx: &Context, slug: &str) -> Page {
         bold(white(text(&blog_post.title))),
         text("\n"),
         gray(text(&blog_post.published.format("%m/%d/%Y").to_string())),
-        text("\n\n\n"),
+        text("\n\n"),
     ];
 
-    Page::new(ctx, 50, elements)
+    let mut last_tag_was_line_break = false;
+    for part in &blog_post.content {
+        match part {
+            PostPart::Text(t) => {
+                elements.push(text(t));
+            }
+            PostPart::InlineCode(t) => {
+                elements.push(italic(text(&format!("`{t}`"))));
+            }
+            PostPart::CodeBlock(t) => {
+                elements.push(italic(text(&format!("```\n{t}\n```\n"))));
+            }
+            PostPart::Italic(t) => {
+                elements.push(italic(text(t)));
+            }
+            PostPart::Bold(content) => {
+                elements.push(bold(text(content)));
+            }
+            PostPart::Image { src, alt } => {
+                let mut image_desc = String::new();
+                image_desc.push_str("Image: ");
+                if let Some(alt) = alt {
+                    image_desc.push_str(alt);
+                    image_desc.push_str(" (");
+                }
+                match src {
+                    ImageSource::Local(path) => {
+                        image_desc.push_str(&path.to_string_lossy());
+                    }
+                    ImageSource::Remote(path) => {
+                        image_desc.push_str(&path);
+                    }
+                }
+                if alt.is_some() {
+                    image_desc.push_str(")");
+                }
+                elements.push(italic(gray(text(&format!("\n{image_desc}\n")))));
+            }
+            PostPart::Link { text: t, href } => {
+                elements.push(external_link(text(t), href));
+            }
+            PostPart::LineBreak => {
+                elements.push(text("\n\n"));
+                last_tag_was_line_break = true;
+                continue;
+            }
+            PostPart::Heading { level: _, text: t } => {
+                if !last_tag_was_line_break {
+                    elements.push(text("\n"));
+                }
+                elements.push(bold(white(text(&format!("{t}\n")))));
+            }
+            PostPart::Quote(t) => {
+                elements.push(italic(text(&format!("> {t}\n"))));
+            }
+        }
+        last_tag_was_line_break = false;
+    }
+
+    Page::new(ctx, 80, elements)
 }

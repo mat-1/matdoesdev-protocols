@@ -60,7 +60,7 @@ pub struct Post {
     pub content: Vec<PostPart>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub enum PostPart {
     Text(String),
     InlineCode(String),
@@ -82,7 +82,7 @@ pub enum PostPart {
     },
     Quote(String),
 }
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub enum ImageSource {
     Local(PathBuf),
     Remote(String),
@@ -185,27 +185,53 @@ async fn crawl_blog(client: &reqwest::Client) -> Result<Vec<Post>, Box<dyn std::
                         content.push(PostPart::Text(text));
                     }
                 }
-                Node::Tag(element) => match element.name().as_utf8_str().to_string().as_str() {
-                    "img" => {
-                        let src = element
-                            .attributes()
-                            .get("src")
-                            .unwrap()
-                            .as_ref()
-                            .expect("all images must have a src")
-                            .as_utf8_str()
-                            .to_string();
+                Node::Tag(element) => {
+                    let element_name = element.name().as_utf8_str().to_string();
 
-                        // combine the base url with the src
-                        let image_url =
-                            Url::parse(&format!("{CRAWL_SCHEME}://{CRAWL_HOSTNAME}/{slug}"))
+                    if matches!(element_name.as_str(), "p" | "pre" | "h1" | "h2" | "h3") {
+                        if !content.is_empty() {
+                            // sometimes there's random raw spaces in the html that aren't meant to be displayed
+                            if content.last().unwrap() == &PostPart::Text(" ".to_owned()) {
+                                content.pop();
+                            }
+                        }
+                    }
+
+                    match element_name.as_str() {
+                        "img" => {
+                            let src = element
+                                .attributes()
+                                .get("src")
                                 .unwrap()
-                                .join(&src)
-                                .unwrap();
+                                .as_ref()
+                                .expect("all images must have a src")
+                                .as_utf8_str()
+                                .to_string();
 
-                        if image_url.host_str().unwrap() != CRAWL_HOSTNAME {
+                            // combine the base url with the src
+                            let image_url =
+                                Url::parse(&format!("{CRAWL_SCHEME}://{CRAWL_HOSTNAME}/{slug}"))
+                                    .unwrap()
+                                    .join(&src)
+                                    .unwrap();
+
+                            if image_url.host_str().unwrap() != CRAWL_HOSTNAME {
+                                content.push(PostPart::Image {
+                                    src: ImageSource::Remote(src.to_string()),
+                                    alt: element
+                                        .attributes()
+                                        .get("alt")
+                                        .unwrap()
+                                        .clone()
+                                        .map(|alt| alt.as_utf8_str().to_string()),
+                                });
+                                return;
+                            }
+
+                            let file_path = get_image(client, &image_url).await;
+
                             content.push(PostPart::Image {
-                                src: ImageSource::Remote(src.to_string()),
+                                src: ImageSource::Local(file_path.to_path_buf()),
                                 alt: element
                                     .attributes()
                                     .get("alt")
@@ -213,84 +239,84 @@ async fn crawl_blog(client: &reqwest::Client) -> Result<Vec<Post>, Box<dyn std::
                                     .clone()
                                     .map(|alt| alt.as_utf8_str().to_string()),
                             });
-                            return;
                         }
-
-                        let file_path = get_image(client, &image_url).await;
-
-                        content.push(PostPart::Image {
-                            src: ImageSource::Local(file_path.to_path_buf()),
-                            alt: element
+                        "a" => {
+                            let href = element
                                 .attributes()
-                                .get("alt")
+                                .get("href")
                                 .unwrap()
-                                .clone()
-                                .map(|alt| alt.as_utf8_str().to_string()),
-                        });
-                    }
-                    "a" => {
-                        let href = element
-                            .attributes()
-                            .get("href")
-                            .unwrap()
-                            .as_ref()
-                            .expect("all links must have a href")
-                            .as_utf8_str()
-                            .to_string();
+                                .as_ref()
+                                .expect("all links must have a href")
+                                .as_utf8_str()
+                                .to_string();
 
-                        content.push(PostPart::Link {
-                            href: href.to_string(),
-                            text: html_tag_to_string(parser, element),
-                        });
-                    }
-                    "br" => {
-                        content.push(PostPart::LineBreak);
-                    }
-                    "p" | "button" => {
-                        for child in element.children().top().iter() {
-                            parse_node(client, parser, child, content, slug).await;
+                            content.push(PostPart::Link {
+                                href: href.to_string(),
+                                text: html_tag_to_string(parser, element),
+                            });
                         }
-                        content.push(PostPart::LineBreak);
-                    }
-                    "code" => {
-                        content.push(PostPart::InlineCode(html_tag_to_string(parser, element)));
-                    }
-                    "pre" => {
-                        content.push(PostPart::CodeBlock(html_tag_to_string(parser, element)));
-                    }
-                    "blockquote" => {
-                        content.push(PostPart::Quote(html_tag_to_string(parser, element)));
-                    }
-                    "em" | "i" => {
-                        content.push(PostPart::Italic(html_tag_to_string(parser, element)));
-                    }
-                    "strong" | "b" => {
-                        content.push(PostPart::Bold(html_tag_to_string(parser, element)));
-                    }
-                    "h1" => {
-                        content.push(PostPart::Heading {
-                            level: 1,
-                            text: html_tag_to_string(parser, element),
-                        });
-                    }
-                    "h2" => {
-                        content.push(PostPart::Heading {
-                            level: 2,
-                            text: html_tag_to_string(parser, element),
-                        });
-                    }
-                    "h3" => {
-                        content.push(PostPart::Heading {
-                            level: 3,
-                            text: html_tag_to_string(parser, element),
-                        });
-                    }
-                    _ => {
-                        for child in element.children().top().iter() {
-                            parse_node(client, parser, child, content, slug).await;
+                        "br" => {
+                            content.push(PostPart::LineBreak);
+                        }
+                        "p" | "button" => {
+                            if !content.is_empty() {
+                                // sometimes there's random raw spaces in the html that aren't meant to be displayed
+                                if content.last().unwrap() == &PostPart::Text(" ".to_owned()) {
+                                    content.pop();
+                                }
+                            }
+                            for child in element.children().top().iter() {
+                                parse_node(client, parser, child, content, slug).await;
+                            }
+                            content.push(PostPart::LineBreak);
+                        }
+                        "code" => {
+                            content.push(PostPart::InlineCode(html_tag_to_string(parser, element)));
+                        }
+                        "pre" => {
+                            content.push(PostPart::CodeBlock(html_tag_to_string(parser, element)));
+                        }
+                        "blockquote" => {
+                            content.push(PostPart::Quote(html_tag_to_string(parser, element)));
+                        }
+                        "em" | "i" => {
+                            content.push(PostPart::Italic(html_tag_to_string(parser, element)));
+                        }
+                        "strong" | "b" => {
+                            content.push(PostPart::Bold(html_tag_to_string(parser, element)));
+                        }
+                        "h1" => {
+                            content.push(PostPart::Heading {
+                                level: 1,
+                                text: html_tag_to_string(parser, element),
+                            });
+                        }
+                        "h2" => {
+                            content.push(PostPart::Heading {
+                                level: 2,
+                                text: html_tag_to_string(parser, element),
+                            });
+                        }
+                        "h3" => {
+                            content.push(PostPart::Heading {
+                                level: 3,
+                                text: html_tag_to_string(parser, element),
+                            });
+                        }
+                        "li" => {
+                            content.push(PostPart::Text(" • ".to_owned()));
+                            for child in element.children().top().iter() {
+                                parse_node(client, parser, child, content, slug).await;
+                            }
+                            content.push(PostPart::LineBreak);
+                        }
+                        _ => {
+                            for child in element.children().top().iter() {
+                                parse_node(client, parser, child, content, slug).await;
+                            }
                         }
                     }
-                },
+                }
                 Node::Comment(_) => {}
             }
         }
