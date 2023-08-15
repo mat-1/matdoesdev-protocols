@@ -53,7 +53,6 @@ impl ReadConnection {
     }
 
     pub async fn read_payload(&mut self) -> anyhow::Result<Vec<u8>> {
-        println!("reading payload");
         // read the packet length and decrypt it
         let mut packet_length_bytes = [0u8; 4];
         self.read.read_exact(&mut packet_length_bytes).await?;
@@ -61,7 +60,6 @@ impl ReadConnection {
             cipher.apply_keystream(&mut packet_length_bytes);
         }
         let packet_length = u32::from_be_bytes(packet_length_bytes) as usize;
-        println!("packet length: {}", packet_length);
 
         // read the packet, one byte at a time so we don't allocate a huge buffer immediately
         let mut packet_bytes = Vec::new();

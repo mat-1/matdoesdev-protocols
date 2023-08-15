@@ -18,6 +18,8 @@ pub struct Context {
     site_data: SiteData,
 
     link_index: Option<usize>,
+
+    scroll: usize,
 }
 
 #[derive(Default, Clone, Debug)]
@@ -74,21 +76,93 @@ impl TerminalSession {
             if let Some(index) = self.ctx.link_index {
                 if let Some(location) = page.links.get(index) {
                     self.location = location.clone();
+                    self.ctx.scroll = 0;
                     self.ctx.link_index = None;
                     return self.page().rendered;
                 }
+            }
+        }
+        // down arrow key
+        else if keys == [27, 91, 66] {
+            self.ctx.scroll += 2;
+            return self.page().rendered;
+        }
+        // scroll up
+        else if keys == [27, 91, 65] {
+            if self.ctx.scroll >= 2 {
+                self.ctx.scroll -= 2;
+            } else {
+                self.ctx.scroll = 0;
+            }
+            return self.page().rendered;
+        }
+        // page up
+        else if keys == [27, 91, 53, 126] {
+            if self.ctx.scroll >= self.ctx.height {
+                self.ctx.scroll -= self.ctx.height;
+            } else {
+                self.ctx.scroll = 0;
+            }
+            return self.page().rendered;
+        }
+        // page down
+        else if keys == [27, 91, 54, 126] {
+            self.ctx.scroll += self.ctx.height;
+            return self.page().rendered;
+        } else if let Some(keys) = keys.strip_prefix(&[27, 91, 60]) {
+            // https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Extended-coordinates
+            let Some((&last, keys)) = keys.split_last() else {
+                return vec![];
+            };
+            let mut split = keys.split(|&k| k == 59);
+            let Some(button_value) = split
+                .next()
+                .and_then(|c| String::from_utf8(c.to_vec()).ok())
+            else {
+                return vec![];
+            };
+            let Some(px) = split
+                .next()
+                .and_then(|c| String::from_utf8(c.to_vec()).ok())
+            else {
+                return vec![];
+            };
+            let Some(py) = split
+                .next()
+                .and_then(|c| String::from_utf8(c.to_vec()).ok())
+            else {
+                return vec![];
+            };
+            let is_pressed = last == b'M';
+
+            match button_value.as_str() {
+                "65" => {
+                    // scroll down
+                    self.ctx.scroll += 2;
+                    return self.page().rendered;
+                }
+                "64" => {
+                    // scroll up
+                    if self.ctx.scroll >= 2 {
+                        self.ctx.scroll -= 2;
+                    } else {
+                        self.ctx.scroll = 0;
+                    }
+                    return self.page().rendered;
+                }
+                _ => {}
             }
         }
 
         vec![]
     }
 
-    fn page(&self) -> Page {
+    fn page(&mut self) -> Page {
         match &self.location {
-            Location::Index => index_page(&self.ctx),
-            Location::Blog => blog_page(&self.ctx),
-            Location::BlogPost { slug } => blog_post_page(&self.ctx, slug),
-            Location::Projects => projects_page(&self.ctx),
+            Location::Index => index_page(&mut self.ctx),
+            Location::Blog => blog_page(&mut self.ctx),
+            Location::BlogPost { slug } => blog_post_page(&mut self.ctx, slug),
+            Location::Projects => projects_page(&mut self.ctx),
         }
     }
 }
@@ -99,15 +173,15 @@ struct Page {
 }
 
 impl Page {
-    pub fn new(ctx: &Context, max_width: usize, elements: Vec<Element>) -> Self {
+    pub fn new(ctx: &mut Context, max_width: usize, elements: Vec<Element>) -> Self {
         let width = max_width.min(ctx.width);
         let left = (ctx.width - width) / 2;
 
         let tree = Element::Rectangle {
-            elements,
+            elements: elements.clone(),
             rect: Rectangle {
-                left,
-                top: 0,
+                left: left as isize,
+                top: -(ctx.scroll as isize),
                 width,
                 height: ctx.height,
             },
@@ -119,8 +193,21 @@ impl Page {
             link_index: ctx.link_index,
         };
         out.push_str(&"\x1b[2J\x1b[H"); // Clear screen
+        let mut position = Position {
+            x: 0,
+            y: -(ctx.scroll as isize),
+        };
+        let initial_position = position.clone();
         out.push_str(&tree.render(
-            &mut Position::default(),
+            &mut position,
+            // this one doesn't matter since it'll get overwritten by the Element::Rectangle
+            &Rectangle {
+                left: 0,
+                top: 0,
+                width: ctx.width,
+                height: ctx.height,
+            },
+            // this is the window size
             &Rectangle {
                 left: 0,
                 top: 0,
@@ -130,6 +217,20 @@ impl Page {
             &mut data,
         ));
         out.push_str(&format!("\x1b[H")); // Move cursor to top left
+
+        let page_height = (position.y - initial_position.y) as usize;
+
+        // clamp scroll
+        let original_scroll = ctx.scroll;
+        if ctx.scroll + ctx.height > page_height {
+            ctx.scroll = isize::max(0, page_height as isize - ctx.height as isize) as usize;
+            if ctx.scroll < original_scroll {
+                // yes i know this is inefficient
+                // i do not care
+                return Self::new(ctx, max_width, elements);
+            }
+        }
+
         Page {
             rendered: out.as_bytes().to_vec(),
             links: data.links,
@@ -137,7 +238,7 @@ impl Page {
     }
 }
 
-fn index_page(ctx: &Context) -> Page {
+fn index_page(ctx: &mut Context) -> Page {
     Page::new(
         ctx,
         50,
@@ -185,7 +286,7 @@ fn index_page(ctx: &Context) -> Page {
     )
 }
 
-fn blog_page(ctx: &Context) -> Page {
+fn blog_page(ctx: &mut Context) -> Page {
     let mut elements = vec![
         text("\n"),
         link(gray(text("← Home")), Location::Index),
@@ -210,7 +311,7 @@ fn blog_page(ctx: &Context) -> Page {
     Page::new(ctx, 50, elements)
 }
 
-fn blog_post_page(ctx: &Context, slug: &str) -> Page {
+fn blog_post_page(ctx: &mut Context, slug: &str) -> Page {
     let Some(blog_post) = ctx.site_data.blog.iter().find(|p| p.slug == slug) else {
         // uhhhh idk go to index page ig
         return index_page(ctx);
@@ -288,7 +389,7 @@ fn blog_post_page(ctx: &Context, slug: &str) -> Page {
     Page::new(ctx, 80, elements)
 }
 
-fn projects_page(ctx: &Context) -> Page {
+fn projects_page(ctx: &mut Context) -> Page {
     let mut elements = vec![
         text("\n"),
         link(gray(text("← Home")), Location::Index),

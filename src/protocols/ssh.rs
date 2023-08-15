@@ -122,9 +122,9 @@ async fn connection(
             break;
         }
     }
-    println!("received message: {:?}", bytes);
 
     let client_id = String::from_utf8(bytes[..bytes.len() - 2].to_vec())?;
+    println!("client id: {client_id}");
 
     let mut read = ReadConnection::new(read);
     let mut sequence_number_server_to_client = 0;
@@ -169,7 +169,6 @@ async fn connection(
 
     loop {
         let packet = read.read_packet().await?;
-        println!("packet: {packet:?}");
         match packet {
             protocol::Message::Disconnect {
                 reason_code,
@@ -237,8 +236,6 @@ async fn connection(
         }
     }
 
-    println!("waiting for newkeys");
-
     // wait for client to send us NewKeys, then we enable encryption
     loop {
         let packet = read.read_packet().await?;
@@ -251,7 +248,6 @@ async fn connection(
     }
 
     // encryption is now enabled!
-    println!("encryption is now enabled");
     read.set_cipher(
         &encryption_keys.encryption_key_client_to_server,
         &encryption_keys.initial_iv_client_to_server,
@@ -309,9 +305,6 @@ async fn connection(
                 initial_window_size,
                 maximum_packet_size,
             } => {
-                println!(
-                    "!! channel open: channel_type: {channel_type}, sender_channel: {sender_channel}, initial_window_size: {initial_window_size}, maximum_packet_size: {maximum_packet_size}"
-                );
                 conn.channels.insert(
                     sender_channel,
                     Channel {
@@ -338,9 +331,9 @@ async fn connection(
                 out.push_str("\x1b[?25l");
                 // don't line wrap
                 out.push_str("\x1b[?7l");
-                // click detection
+                // mouse capturing
                 out.push_str("\x1b[?1003h");
-                // mouse movement detection
+                // enable "extended coordinates"
                 out.push_str("\x1b[?1006h");
 
                 conn.write_data(out.as_bytes(), sender_channel).await?;
@@ -377,7 +370,6 @@ async fn connection(
                 recipient_channel,
                 data,
             } => {
-                println!("channel data: recipient_channel: {recipient_channel}, data: {data:?}");
                 if data == [3] || data == [4] {
                     // ^C or ^D
 
@@ -398,9 +390,6 @@ async fn connection(
                 recipient_channel,
                 bytes_to_add,
             } => {
-                println!(
-                    "channel window adjust: recipient_channel: {recipient_channel}, bytes_to_add: {bytes_to_add}"
-                );
                 if let Some(channel) = conn.channels.get_mut(&recipient_channel) {
                     channel.recipient_window_size += bytes_to_add;
                 }

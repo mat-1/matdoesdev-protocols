@@ -61,8 +61,6 @@ pub fn compute_exchange_hash(
     shared_secret: Option<&[u8]>,
     exchange: &Exchange,
 ) -> anyhow::Result<Vec<u8>> {
-    println!("exchange: {exchange:?}");
-
     // Computing the exchange hash, see page 7 of RFC 5656.
 
     let mut buffer = Vec::new();
