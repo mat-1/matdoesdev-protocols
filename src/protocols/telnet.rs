@@ -185,7 +185,7 @@ async fn connection(
         let Ok(read_result) = tokio::time::timeout(Duration::from_millis(100), read.next()).await
         else {
             // get window size every second
-            // Command::Do(Opt::WindowSize).write(&mut write).await?;
+            Command::Do(Opt::WindowSize).write(&mut write).await?;
             continue;
         };
         let Some(data) = read_result.transpose()? else {
