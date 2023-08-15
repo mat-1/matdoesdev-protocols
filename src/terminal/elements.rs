@@ -37,7 +37,7 @@ pub struct Rectangle {
     pub height: usize,
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Position {
     pub x: isize,
     pub y: isize,
@@ -45,7 +45,7 @@ pub struct Position {
 
 #[derive(Debug, Clone)]
 pub struct Data {
-    pub links: Vec<Location>,
+    pub links: Vec<(Location, Vec<Position>)>,
     pub link_index: Option<usize>,
 }
 
@@ -166,8 +166,8 @@ impl Element {
             }
 
             Element::Link { inner, location } => {
-                data.links.push(location.clone());
-                let selected = data.link_index == Some(data.links.len() - 1);
+                let start_pos = pos.clone();
+                let selected = data.link_index == Some(data.links.len());
                 if selected {
                     result.push_str("\x1b[1m");
                 }
@@ -175,6 +175,15 @@ impl Element {
                 if selected {
                     result.push_str(RESET);
                 }
+
+                // i was too lazy to make wrapping work
+                let mut positions = Vec::new();
+                for x in start_pos.x..=pos.x {
+                    for y in start_pos.y..=pos.y {
+                        positions.push(Position { x, y });
+                    }
+                }
+                data.links.push((location.clone(), positions));
             }
             Element::ExternalLink { inner, url } => {
                 result.push_str("\x1b[4m"); // underline

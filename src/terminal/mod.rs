@@ -22,7 +22,7 @@ pub struct Context {
     scroll: usize,
 }
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Location {
     #[default]
     Index,
@@ -74,7 +74,7 @@ impl TerminalSession {
         // enter
         else if keys == [13] {
             if let Some(index) = self.ctx.link_index {
-                if let Some(location) = page.links.get(index) {
+                if let Some((location, _)) = page.links.get(index) {
                     self.location = location.clone();
                     self.ctx.scroll = 0;
                     self.ctx.link_index = None;
@@ -124,18 +124,37 @@ impl TerminalSession {
             let Some(px) = split
                 .next()
                 .and_then(|c| String::from_utf8(c.to_vec()).ok())
+                .and_then(|s| s.parse::<usize>().ok())
             else {
                 return vec![];
             };
             let Some(py) = split
                 .next()
                 .and_then(|c| String::from_utf8(c.to_vec()).ok())
+                .and_then(|s| s.parse::<usize>().ok())
             else {
                 return vec![];
             };
             let is_pressed = last == b'M';
 
             match button_value.as_str() {
+                "0" if is_pressed => {
+                    // left mouse click
+                    let page = self.page();
+                    // find if we clicked on a link
+                    let mouse_position = Position {
+                        x: px as isize - 1,
+                        y: py as isize - 1,
+                    };
+                    for (location, positions) in page.links {
+                        if positions.contains(&mouse_position) {
+                            self.location = location.clone();
+                            self.ctx.scroll = 0;
+                            self.ctx.link_index = None;
+                            return self.page().rendered;
+                        }
+                    }
+                }
                 "65" => {
                     // scroll down
                     self.ctx.scroll += 2;
@@ -169,7 +188,7 @@ impl TerminalSession {
 
 struct Page {
     rendered: Vec<u8>,
-    links: Vec<Location>,
+    links: Vec<(Location, Vec<Position>)>,
 }
 
 impl Page {
