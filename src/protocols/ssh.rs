@@ -31,7 +31,7 @@ use crate::{
 use super::Protocol;
 
 const BIND_HOST: &str = "[::]";
-const BIND_PORT: u16 = 2222;
+const BIND_PORT: u16 = 22;
 
 #[derive(Clone)]
 pub struct Ssh {
