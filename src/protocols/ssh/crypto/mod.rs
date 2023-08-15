@@ -84,7 +84,7 @@ pub fn compute_key(
     let mut buffer = Vec::new();
     let mut key = Vec::new();
 
-    protocol::write_mpint(&mut buffer, &shared_secret)?;
+    protocol::write_mpint(&mut buffer, shared_secret)?;
     buffer.extend(exchange_hash);
     buffer.push(character as u8);
     buffer.extend(session_id);
@@ -94,7 +94,7 @@ pub fn compute_key(
     // extend the key if it's not long enough
     while key.len() < key_length {
         let mut buffer = Vec::new();
-        protocol::write_mpint(&mut buffer, &shared_secret)?;
+        protocol::write_mpint(&mut buffer, shared_secret)?;
         buffer.extend(exchange_hash);
         buffer.extend(&key);
         key.extend(&sha256(&buffer));
@@ -109,7 +109,7 @@ pub fn sha256(buffer: &[u8]) -> Vec<u8> {
     // usually the hasher would depend on the key exchange algorithm, but we only support curve25519-sha256
     use sha2::Digest;
     let mut hasher = sha2::Sha256::new();
-    hasher.update(&buffer);
+    hasher.update(buffer);
     hasher.finalize().as_slice().to_vec()
 }
 

@@ -1,9 +1,7 @@
-use std::io::{Cursor, Read, Write};
+use std::io::{Read, Write};
 
-use aes::{cipher::StreamCipher, Aes128};
 use anyhow::bail;
 use byteorder::{ReadBytesExt, WriteBytesExt, BE};
-use ctr::Ctr128BE;
 
 #[derive(Debug)]
 #[repr(u8)]

@@ -188,12 +188,12 @@ async fn crawl_blog(client: &reqwest::Client) -> Result<Vec<Post>, Box<dyn std::
                 Node::Tag(element) => {
                     let element_name = element.name().as_utf8_str().to_string();
 
-                    if matches!(element_name.as_str(), "p" | "pre" | "h1" | "h2" | "h3") {
-                        if !content.is_empty() {
-                            // sometimes there's random raw spaces in the html that aren't meant to be displayed
-                            if content.last().unwrap() == &PostPart::Text(" ".to_owned()) {
-                                content.pop();
-                            }
+                    if matches!(element_name.as_str(), "p" | "pre" | "h1" | "h2" | "h3")
+                        && !content.is_empty()
+                    {
+                        // sometimes there's random raw spaces in the html that aren't meant to be displayed
+                        if content.last().unwrap() == &PostPart::Text(" ".to_owned()) {
+                            content.pop();
                         }
                     }
 
@@ -222,7 +222,6 @@ async fn crawl_blog(client: &reqwest::Client) -> Result<Vec<Post>, Box<dyn std::
                                         .attributes()
                                         .get("alt")
                                         .unwrap()
-                                        .clone()
                                         .map(|alt| alt.as_utf8_str().to_string()),
                                 });
                                 return;
@@ -236,7 +235,6 @@ async fn crawl_blog(client: &reqwest::Client) -> Result<Vec<Post>, Box<dyn std::
                                     .attributes()
                                     .get("alt")
                                     .unwrap()
-                                    .clone()
                                     .map(|alt| alt.as_utf8_str().to_string()),
                             });
                         }

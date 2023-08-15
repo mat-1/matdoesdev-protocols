@@ -16,7 +16,7 @@ pub fn load_keypair() -> Keypair {
 
         // make the directory if it doesn't exist
         std::fs::create_dir_all(keypair_path.parent().unwrap()).unwrap();
-        std::fs::write(&keypair_path, keypair_bytes).unwrap();
+        std::fs::write(keypair_path, keypair_bytes).unwrap();
     }
 
     let mut keypair_file = std::fs::File::open(keypair_path).unwrap();
@@ -24,8 +24,7 @@ pub fn load_keypair() -> Keypair {
     let mut keypair_bytes = Vec::new();
     keypair_file.read_to_end(&mut keypair_bytes).unwrap();
 
-    let keypair = ed25519_dalek::Keypair::from_bytes(&keypair_bytes).unwrap();
-    keypair
+    ed25519_dalek::Keypair::from_bytes(&keypair_bytes).unwrap()
 }
 
 fn generate_new_keypair() -> Keypair {
@@ -75,7 +74,7 @@ pub fn compute_exchange_hash(
     protocol::write_bytes(&mut buffer, &exchange.server_ephemeral)?;
 
     if let Some(shared) = shared_secret {
-        protocol::write_mpint(&mut buffer, &shared)?;
+        protocol::write_mpint(&mut buffer, shared)?;
     }
 
     use sha2::Digest;

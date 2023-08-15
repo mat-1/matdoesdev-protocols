@@ -172,7 +172,7 @@ impl Protocol for Gemini {
                 content.push_str(&format!("=> {href} {text}\n"));
             }
 
-            content.push_str(&format!("=> /blog ⬅ Back\n"));
+            content.push_str("=> /blog ⬅ Back\n");
 
             // add the content to the posts map
             posts.insert(slug.to_string(), content);
@@ -193,7 +193,7 @@ impl Protocol for Gemini {
                     let pretty_href = href
                         .strip_prefix("https://")
                         .unwrap_or(href.strip_prefix("http://").unwrap_or(href));
-                    let pretty_href = pretty_href.strip_suffix("/").unwrap_or(pretty_href);
+                    let pretty_href = pretty_href.strip_suffix('/').unwrap_or(pretty_href);
                     projects_gmi.push_str(&format!("=> {href} {pretty_href}\n"))
                 }
             }
@@ -212,18 +212,16 @@ impl Protocol for Gemini {
                             .join(", ")
                     ))
                 }
-            } else {
-                if !project.languages.is_empty() {
-                    projects_gmi.push_str(&format!(
-                        "Languages: {}\n",
-                        project
-                            .languages
-                            .iter()
-                            .map(|l| l.to_string())
-                            .collect::<Vec<String>>()
-                            .join(", ")
-                    ))
-                }
+            } else if !project.languages.is_empty() {
+                projects_gmi.push_str(&format!(
+                    "Languages: {}\n",
+                    project
+                        .languages
+                        .iter()
+                        .map(|l| l.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                ))
             }
         }
 
@@ -331,7 +329,7 @@ async fn respond(
             .as_bytes()
             .to_vec(),
         path => {
-            let slug = path.strip_prefix("/").unwrap();
+            let slug = path.strip_prefix('/').unwrap();
             // if it has another slash, that means it's media
             if slug.contains('/') {
                 // get the path relative to the media directory
@@ -345,8 +343,8 @@ async fn respond(
                 file.read_to_end(&mut content).await.unwrap();
                 format!("20 {}\r\n", mime)
                     .as_bytes()
-                    .to_vec()
-                    .into_iter()
+                    .iter()
+                    .copied()
                     .chain(content)
                     .collect()
             } else {

@@ -72,7 +72,7 @@ fn flush_word(
     let in_window = pos.y >= 0 && pos.y < window.height as isize;
     if in_window {
         result.push_str(&move_cursor(pos));
-        result.push_str(&word);
+        result.push_str(word);
     }
     pos.x += word_length as isize;
     word.clear();
@@ -95,12 +95,12 @@ impl Element {
                 for c in text.chars() {
                     if c == ' ' {
                         if flush_word(pos, &mut word, parent_rect, window, &mut result) {
-                            result.push_str(&" ");
+                            result.push(' ');
                         }
                         pos.x += 1;
                     } else if c == '\t' {
                         if flush_word(pos, &mut word, parent_rect, window, &mut result) {
-                            result.push_str(&"    ");
+                            result.push_str("    ");
                         }
                         pos.x += 4;
                     } else if c == '\n' {
@@ -116,7 +116,7 @@ impl Element {
             Element::HorizontallyCentered(inner) => {
                 // render once to get length
                 let initial_pos = pos.clone();
-                inner.render(pos, &parent_rect, window, &mut data.clone());
+                inner.render(pos, parent_rect, window, &mut data.clone());
 
                 let width = if initial_pos.y == pos.y {
                     (pos.x - initial_pos.x) as usize
@@ -138,7 +138,7 @@ impl Element {
             Element::VerticallyCentered(inner) => {
                 // render once to get height
                 let initial_pos = pos.clone();
-                inner.render(pos, &parent_rect, window, &mut data.clone());
+                inner.render(pos, parent_rect, window, &mut data.clone());
 
                 let height = usize::min((pos.y - initial_pos.y) as usize, parent_rect.height);
 
@@ -196,7 +196,7 @@ impl Element {
             Element::Formatted { inner, format } => {
                 result.push_str("\x1b[");
                 result.push_str(format);
-                result.push_str("m");
+                result.push('m');
                 result.push_str(&inner.render(pos, parent_rect, window, data));
                 result.push_str(RESET);
             }

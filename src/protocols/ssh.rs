@@ -209,7 +209,7 @@ async fn connection(
                 )?;
                 break;
             }
-            _ => bail!("unexpected message"),
+            _ => println!("unexpected message"),
         }
     }
 
@@ -220,7 +220,7 @@ async fn connection(
             protocol::Message::NewKeys => {
                 break;
             }
-            _ => bail!("expected NewKeys"),
+            _ => println!("expected NewKeys"),
         }
     }
 
@@ -242,7 +242,7 @@ async fn connection(
     let mut terminal_session = TerminalSession::new(site_data);
 
     while let Ok(packet) = read.read_packet().await {
-        println!("packet: {packet:?}");
+        // println!("packet: {packet:?}");
         match packet {
             protocol::Message::ServiceRequest { service_name } => {
                 if service_name == "ssh-userauth" {
@@ -277,7 +277,7 @@ async fn connection(
                     .await?;
             }
             protocol::Message::ChannelOpen {
-                channel_type,
+                channel_type: _,
                 sender_channel,
                 initial_window_size,
                 maximum_packet_size,

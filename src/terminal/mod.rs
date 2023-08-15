@@ -211,7 +211,7 @@ impl Page {
             links: vec![],
             link_index: ctx.link_index,
         };
-        out.push_str(&"\x1b[2J\x1b[H"); // Clear screen
+        out.push_str("\x1b[2J\x1b[H"); // Clear screen
         let mut position = Position {
             x: 0,
             y: -(ctx.scroll as isize),
@@ -235,7 +235,7 @@ impl Page {
             },
             &mut data,
         ));
-        out.push_str(&format!("\x1b[H")); // Move cursor to top left
+        out.push_str("\x1b[H"); // Move cursor to top left
 
         let page_height = (position.y - initial_position.y) as usize;
 
@@ -316,7 +316,7 @@ fn blog_page(ctx: &mut Context) -> Page {
     for blog_post in &ctx.site_data.blog {
         elements.push(colorless_link(
             container(vec![
-                text(&format!("{}", blog_post.title)),
+                text(&blog_post.title),
                 text("\n"),
                 gray(text(&blog_post.published.format("%m/%d/%Y").to_string())),
             ]),
@@ -376,11 +376,11 @@ fn blog_post_page(ctx: &mut Context, slug: &str) -> Page {
                         image_desc.push_str(&path.to_string_lossy());
                     }
                     ImageSource::Remote(path) => {
-                        image_desc.push_str(&path);
+                        image_desc.push_str(path);
                     }
                 }
                 if alt.is_some() {
-                    image_desc.push_str(")");
+                    image_desc.push(')');
                 }
                 elements.push(italic(gray(text(&format!("\n{image_desc}\n")))));
             }
