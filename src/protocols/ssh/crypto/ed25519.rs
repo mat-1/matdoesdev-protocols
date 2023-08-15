@@ -1,12 +1,12 @@
 use std::{io::Read, path::Path};
 
-use ed25519_dalek::{ed25519::signature::Signature, Keypair, Signer};
+use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 
 use crate::protocols::ssh::protocol;
 
 const KEYPAIR_PATH: &str = "data/ssh/keypair.bin";
 
-pub fn load_keypair() -> Keypair {
+pub fn load_keypair() -> SigningKey {
     let keypair_path = Path::new(KEYPAIR_PATH);
 
     if !keypair_path.exists() {
@@ -24,16 +24,16 @@ pub fn load_keypair() -> Keypair {
     let mut keypair_bytes = Vec::new();
     keypair_file.read_to_end(&mut keypair_bytes).unwrap();
 
-    ed25519_dalek::Keypair::from_bytes(&keypair_bytes).unwrap()
+    SigningKey::from_keypair_bytes(&<[u8; 64]>::try_from(keypair_bytes).unwrap()).unwrap()
 }
 
-fn generate_new_keypair() -> Keypair {
+fn generate_new_keypair() -> SigningKey {
     // ed25519_dalek uses an old version of rand
     #[allow(deprecated)]
-    let keypair = ed25519_dalek::Keypair::generate(&mut rand_os::OsRng {});
+    let keypair = SigningKey::generate(&mut rand::thread_rng());
     assert_eq!(
-        keypair.public.as_bytes(),
-        ed25519_dalek::PublicKey::from(&keypair.secret).as_bytes()
+        keypair.verifying_key().as_bytes(),
+        VerifyingKey::from(&keypair).as_bytes()
     );
 
     keypair
@@ -86,11 +86,11 @@ pub fn compute_exchange_hash(
     Ok(res)
 }
 
-pub fn add_signature(keypair: &ed25519_dalek::Keypair, to_sign: &[u8]) -> anyhow::Result<Vec<u8>> {
+pub fn add_signature(keypair: &SigningKey, to_sign: &[u8]) -> anyhow::Result<Vec<u8>> {
     let mut buffer = Vec::new();
     let signature = keypair.sign(to_sign);
     protocol::write_string(&mut buffer, "ssh-ed25519")?;
-    protocol::write_bytes(&mut buffer, signature.as_bytes())?;
+    protocol::write_bytes(&mut buffer, &signature.to_bytes())?;
 
     Ok(buffer)
 }

@@ -168,7 +168,10 @@ async fn connection(
 
                 let mut server_public_host_key = Vec::new();
                 protocol::write_string(&mut server_public_host_key, "ssh-ed25519")?;
-                protocol::write_bytes(&mut server_public_host_key, keypair.public.as_bytes())?;
+                protocol::write_bytes(
+                    &mut server_public_host_key,
+                    keypair.verifying_key().as_bytes(),
+                )?;
 
                 exchange_hash = crypto::ed25519::compute_exchange_hash(
                     &server_public_host_key,
