@@ -249,8 +249,10 @@ async fn connection(
                     conn.write_packet(protocol::Message::ServiceAccept { service_name })
                         .await?;
                     conn.write_packet(protocol::Message::UserauthBanner {
-                        message: format!("hi chat\n"),
-                        language_tag: "english probably".to_string(),
+                        message: format!(
+                            "welcome to mat does dev free preview no download required\n"
+                        ),
+                        language_tag: "".to_string(),
                     })
                     .await?;
                 } else {
@@ -303,17 +305,8 @@ async fn connection(
                 })
                 .await?;
 
-                let mut out = String::new();
-                // hide the cursor
-                out.push_str("\x1b[?25l");
-                // don't line wrap
-                out.push_str("\x1b[?7l");
-                // mouse capturing
-                out.push_str("\x1b[?1003h");
-                // enable "extended coordinates"
-                out.push_str("\x1b[?1006h");
-
-                conn.write_data(out.as_bytes(), sender_channel).await?;
+                conn.write_data(&terminal_session.on_open(), sender_channel)
+                    .await?;
             }
             protocol::Message::ChannelRequest {
                 recipient_channel,
@@ -359,13 +352,9 @@ async fn connection(
                     // ^C or ^D
 
                     // give them their cursor back lol
-                    let mut out = String::new();
-                    out.push_str("\x1b[?25h");
-                    out.push_str("\x1b[?7h");
-                    out.push_str("\x1b[?1003l");
-                    out.push_str("\x1b[?1006l");
-                    out.push_str("Bye!\r\n");
-                    conn.write_data(out.as_bytes(), recipient_channel).await?;
+
+                    conn.write_data(&terminal_session.on_close(), recipient_channel)
+                        .await?;
                     break;
                 }
                 let data = terminal_session.on_keystroke(&data);

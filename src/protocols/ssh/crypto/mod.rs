@@ -25,8 +25,6 @@ pub fn compute_keys(
     cipher_iv_size: usize,
     mac_key_size: usize,
 ) -> anyhow::Result<EncryptionKeys> {
-    println!("mac_key_size: {mac_key_size}");
-
     Ok(EncryptionKeys {
         initial_iv_client_to_server: compute_key(
             shared_secret,

@@ -176,6 +176,29 @@ impl TerminalSession {
         vec![]
     }
 
+    pub fn on_open(&self) -> Vec<u8> {
+        let mut out = String::new();
+        // hide the cursor
+        out.push_str("\x1b[?25l");
+        // don't line wrap
+        out.push_str("\x1b[?7l");
+        // mouse capturing
+        out.push_str("\x1b[?1003h");
+        // enable "extended coordinates"
+        out.push_str("\x1b[?1006h");
+        out.as_bytes().to_vec()
+    }
+
+    pub fn on_close(&self) -> Vec<u8> {
+        let mut out = String::new();
+        out.push_str("\x1b[?25h");
+        out.push_str("\x1b[?7h");
+        out.push_str("\x1b[?1003l");
+        out.push_str("\x1b[?1006l");
+        out.push_str("Bye!\r\n");
+        out.as_bytes().to_vec()
+    }
+
     fn page(&mut self) -> Page {
         match &self.location {
             Location::Index => index_page(&mut self.ctx),
