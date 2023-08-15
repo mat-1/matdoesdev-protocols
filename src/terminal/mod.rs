@@ -350,7 +350,7 @@ fn blog_page(ctx: &mut Context) -> Page {
         elements.push(text("\n\n"));
     }
 
-    Page::new(ctx, 50, elements)
+    Page::new(ctx, 80, elements)
 }
 
 fn blog_post_page(ctx: &mut Context, slug: &str) -> Page {
@@ -467,5 +467,5 @@ fn projects_page(ctx: &mut Context) -> Page {
         elements.push(text("\n\n"));
     }
 
-    Page::new(ctx, 50, elements)
+    Page::new(ctx, 80, elements)
 }
