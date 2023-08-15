@@ -155,6 +155,7 @@ pub enum ChannelRequestExtra {
     Exec {
         command: String,
     },
+    Shell,
     None,
 }
 
@@ -410,6 +411,7 @@ pub fn read_message(mut data: impl Read) -> anyhow::Result<Message> {
                 "exec" => ChannelRequestExtra::Exec {
                     command: read_string(&mut data)?,
                 },
+                "shell" => ChannelRequestExtra::Shell,
                 _ => ChannelRequestExtra::None,
             };
 
@@ -672,6 +674,9 @@ pub fn write_message(message: Message) -> anyhow::Result<Vec<u8>> {
                 }
                 ChannelRequestExtra::Exec { command } => {
                     write_string(&mut buf, &command)?;
+                }
+                ChannelRequestExtra::Shell => {
+                    // nothing
                 }
                 ChannelRequestExtra::None => todo!(),
             }

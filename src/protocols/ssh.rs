@@ -345,6 +345,10 @@ async fn connection(
                     conn.write_packet(protocol::Message::ChannelSuccess { recipient_channel })
                         .await?;
                 }
+                ChannelRequestExtra::Shell => {
+                    conn.write_packet(protocol::Message::ChannelSuccess { recipient_channel })
+                        .await?;
+                }
                 ChannelRequestExtra::None => {}
             },
             protocol::Message::ChannelData {
