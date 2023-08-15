@@ -354,8 +354,6 @@ async fn connection(
                 if data == [3] || data == [4] {
                     // ^C or ^D
 
-                    // give them their cursor back lol
-
                     conn.write_data(&terminal_session.on_close(), recipient_channel)
                         .await?;
                     break;

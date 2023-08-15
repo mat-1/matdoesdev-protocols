@@ -54,7 +54,7 @@ impl TerminalSession {
         let page = self.page();
 
         // tab
-        if keys == [9] {
+        if keys == b"\t" {
             if let Some(index) = self.ctx.link_index {
                 self.ctx.link_index = Some((index + 1) % page.links.len());
             } else {
@@ -72,7 +72,7 @@ impl TerminalSession {
             return self.page().rendered;
         }
         // enter
-        else if keys == [13] {
+        else if keys == b"\r" || keys == b"\r\n" {
             if let Some(index) = self.ctx.link_index {
                 if let Some((location, _)) = page.links.get(index) {
                     self.location = location.clone();
@@ -191,6 +191,7 @@ impl TerminalSession {
 
     pub fn on_close(&self) -> Vec<u8> {
         let mut out = String::new();
+        // give them their cursor back lol
         out.push_str("\x1b[?25h");
         out.push_str("\x1b[?7h");
         out.push_str("\x1b[?1003l");

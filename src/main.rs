@@ -39,8 +39,9 @@ async fn main() {
 
     let gemini = protocols::gemini::Gemini::generate(&data);
     let ssh = protocols::ssh::Ssh::generate(&data);
+    let telnet = protocols::telnet::Telnet::generate(&data);
 
-    tokio::join!(gemini.serve(), ssh.serve());
+    tokio::join!(gemini.serve(), ssh.serve(), telnet.serve());
 
     // println!("{:?}", crawl_result);
 }
