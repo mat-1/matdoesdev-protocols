@@ -18,7 +18,7 @@ async fn main() {
 
     // read from the cache if it exists
     // mainly meant for debugging
-    let use_cache = false;
+    let use_cache = cfg!(debug_assertions);
 
     let data = if use_cache {
         if let Ok(cache) = fs::read_to_string("cache.json").await {

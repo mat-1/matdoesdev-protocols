@@ -152,6 +152,9 @@ pub enum ChannelRequestExtra {
         width_pixels: u32,
         height_pixels: u32,
     },
+    Exec {
+        command: String,
+    },
     None,
 }
 
@@ -403,6 +406,9 @@ pub fn read_message(mut data: impl Read) -> anyhow::Result<Message> {
                     height_rows: data.read_u32::<BE>()?,
                     width_pixels: data.read_u32::<BE>()?,
                     height_pixels: data.read_u32::<BE>()?,
+                },
+                "exec" => ChannelRequestExtra::Exec {
+                    command: read_string(&mut data)?,
                 },
                 _ => ChannelRequestExtra::None,
             };
@@ -663,6 +669,9 @@ pub fn write_message(message: Message) -> anyhow::Result<Vec<u8>> {
                     buf.write_u32::<BE>(height_rows)?;
                     buf.write_u32::<BE>(width_pixels)?;
                     buf.write_u32::<BE>(height_pixels)?;
+                }
+                ChannelRequestExtra::Exec { command } => {
+                    write_string(&mut buf, &command)?;
                 }
                 ChannelRequestExtra::None => todo!(),
             }

@@ -31,7 +31,14 @@ use crate::{
 use super::Protocol;
 
 const BIND_HOST: &str = "[::]";
-const BIND_PORT: u16 = 22;
+const BIND_PORT: u16 = {
+    #[cfg(debug_assertions)]
+    {
+        2222
+    }
+    #[cfg(not(debug_assertions))]
+    22
+};
 
 #[derive(Clone)]
 pub struct Ssh {
@@ -67,36 +74,6 @@ impl Protocol for Ssh {
                     }
                 }
             });
-
-            // tokio::spawn(async move {
-            //     let _ = tokio::io::AsyncWriteExt::write_all(&mut write, b"SSH-2.0-matssh_1.0\r\n")
-            //         .await;
-
-            //     while let Some(message) = framed.next().await {
-            //         let bytes = match message {
-            //             Ok(bytes) => bytes,
-            //             Err(e) => {
-            //                 println!("error reading from stream: {}", e);
-            //                 return;
-            //             }
-            //         };
-            //         println!("received message: {:?}", bytes);
-
-            //         let mut data = Cursor::new(bytes);
-            //         let packet_length = data.read_u32::<BE>();
-            //         let padding_length = data.read_u8();
-
-            //         let payload_length = packet_length - padding_length as u32 - 1;
-            //         if payload_length > bytes {
-            //             eprintln!("payload length is greater than packet length");
-            //             return;
-            //         }
-            //         let mut payload = vec![0; payload_length];
-            //         data.read_exact(&mut payload);
-
-            //         println!("payload: {:?}", payload);
-            //     }
-            // });
         }
     }
 }
@@ -265,17 +242,17 @@ async fn connection(
     let mut terminal_session = TerminalSession::new(site_data);
 
     while let Ok(packet) = read.read_packet().await {
-        // println!("packet: {packet:?}");
+        println!("packet: {packet:?}");
         match packet {
             protocol::Message::ServiceRequest { service_name } => {
                 if service_name == "ssh-userauth" {
                     conn.write_packet(protocol::Message::ServiceAccept { service_name })
                         .await?;
-                    // conn.write_packet(protocol::Message::UserauthBanner {
-                    //     message: format!("hi chat\n"),
-                    //     language_tag: "english probably".to_string(),
-                    // })
-                    // .await?;
+                    conn.write_packet(protocol::Message::UserauthBanner {
+                        message: format!("hi chat\n"),
+                        language_tag: "english probably".to_string(),
+                    })
+                    .await?;
                 } else {
                     bail!("unsupported service: {service_name}");
                 }
@@ -364,6 +341,10 @@ async fn connection(
                     let data = terminal_session.resize(width_columns, height_rows);
                     conn.write_data(&data, recipient_channel).await?;
                 }
+                ChannelRequestExtra::Exec { command: _ } => {
+                    conn.write_packet(protocol::Message::ChannelSuccess { recipient_channel })
+                        .await?;
+                }
                 ChannelRequestExtra::None => {}
             },
             protocol::Message::ChannelData {
@@ -394,6 +375,13 @@ async fn connection(
                     channel.recipient_window_size += bytes_to_add;
                 }
             }
+            protocol::Message::ChannelEof { recipient_channel } => {
+                conn.write_packet(protocol::Message::ChannelClose { recipient_channel })
+                    .await?;
+            }
+            protocol::Message::ChannelClose {
+                recipient_channel: _,
+            } => {}
             _ => println!("unexpected message"),
         }
     }
