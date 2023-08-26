@@ -153,7 +153,7 @@ impl Protocol for Gopher {
             let date = post.published.format("%Y-%m-%d").to_string();
             let title = &post.title;
             // add it to the index
-            blog_content.link(&format!("{date} - {title}"), &format!("/{slug}"));
+            blog_content.link(&format!("/{slug}"), &format!("{date} - {title}"));
             // generate the content
             let mut out = GopherBuffer::new();
 
