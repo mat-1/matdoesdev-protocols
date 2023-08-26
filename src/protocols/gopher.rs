@@ -1,18 +1,14 @@
-mod cert;
-
 use std::{
     collections::HashMap,
     io::{self},
     path::Path,
-    sync::Arc,
+    sync::Arc, fmt::{Display, Formatter},
 };
 
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
 };
-use tokio_rustls::server::TlsStream;
-use url::Url;
 
 use crate::{
     crawl::{ImageSource, PostPart, SiteData},
@@ -22,10 +18,16 @@ use crate::{
 use super::Protocol;
 
 const BIND_HOST: &str = "[::]";
-const BIND_PORT: u16 = 1965;
+const BIND_PORT: u16 = {
+    #[cfg(debug_assertions)]
+    {
+        7070
+    }
+    #[cfg(not(debug_assertions))]
+    70
+};
 
-const INDEX_GMI: &str = r#"```matdoesdev
-                       888        888                                 888                   
+const INDEX_HEADER: &str = r#"                       888        888                                 888                   
                        888        888                                 888                   
                        888        888                                 888                   
 88888b.d88b.   8888b.  888888 .d88888  .d88b.   .d88b.  .d8888b   .d88888  .d88b.  888  888 
@@ -33,24 +35,24 @@ const INDEX_GMI: &str = r#"```matdoesdev
 888  888  888 .d888888 888   888  888 888  888 88888888 "Y8888b. 888  888 88888888 Y88  88P 
 888  888  888 888  888 Y88b. Y88b 888 Y88..88P Y8b.          X88 Y88b 888 Y8b.      Y8bd8P  
 888  888  888 "Y888888  "Y888 "Y88888  "Y88P"   "Y8888   88888P'  "Y88888  "Y8888    Y88P
-```
 
 I'm mat, I do full-stack software development.
 This portfolio contains my blog posts and links to some of the projects I've made.
-
-=> blog 📝 Blog
-=> projects 💻 Projects
-
-=> https://github.com/mat-1 GitHub
-=> https://matrix.to/#/@mat:matdoes.dev Matrix
-=> https://ko-fi.com/matdoesdev Ko-fi (donate)
 "#;
 
+// => blog 📝 Blog
+// => projects 💻 Projects
+
+// => https://github.com/mat-1 GitHub
+// => https://matrix.to/#/@mat:matdoes.dev Matrix
+// => https://ko-fi.com/matdoesdev Ko-fi (donate)
+
 #[derive(Clone)]
-pub struct Gemini {
-    pub blog_gmi: String,
-    pub posts_gmi: HashMap<String, String>,
-    pub projects_gmi: String,
+pub struct Gopher {
+    pub index_content: String,
+    pub blog_content: String,
+    pub posts_content: HashMap<String, String>,
+    pub projects_content: String,
 }
 
 pub struct Link {
@@ -58,53 +60,134 @@ pub struct Link {
     pub href: String,
 }
 
-impl Protocol for Gemini {
-    fn generate(data: &SiteData) -> Self {
-        let mut blog_gmi = String::new();
-        blog_gmi.push_str("# Blog\n\n");
 
-        let mut posts = HashMap::new();
+#[derive(Default, Clone)]
+pub struct GopherBuffer {
+    pub buffer: String,
+    pub out: String,
+}
+
+impl GopherBuffer {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn text(&mut self, content: &str) {
+        self.buffer.push_str(content);
+    }
+
+    pub fn line(&mut self, content: &str) {
+        self.flush();
+        if content.contains('\n') {
+            for line in content.lines() {
+                self.out.push_str(&format!("i{line}\tfake\tnull\t0\r\n"));
+            }
+        } else {
+            self.out.push_str(&format!("i{content}\tfake\tnull\t0\r\n"));
+        }
+    }
+
+    pub fn flush(&mut self) {
+        let buffer = std::mem::replace(&mut self.buffer, String::new());
+        for line in buffer.lines() {
+            // spaces at the beginning make lagrange format it as a codeblock
+            let line = line.trim();
+            self.out.push_str(&format!("i{line}\tfake\tnull\t0\r\n"));
+        }
+    }
+
+    pub fn link(&mut self, href: &str, text: &str) {
+        self.flush();
+        for line in text.lines() {
+            self.out.push_str(&format!("1{line}\t{href}\t{HOSTNAME}\t{BIND_PORT}\r\n"));
+        }
+    }
+
+    pub fn image(&mut self, href: &str, alt: &str) {
+        self.flush();
+        self.out.push_str(&format!("I{alt}\t{href}\t{HOSTNAME}\t{BIND_PORT}\r\n"));
+    }
+
+    pub fn external_link(&mut self, href: &str, text: &str) {
+        self.flush();
+        for line in text.lines() {
+            self.out.push_str(&format!("h{line}\tURL:{href}\t\t443\r\n"));
+        }
+    }
+}
+
+impl Display for GopherBuffer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut flushed = self.clone();
+        flushed.flush();
+        write!(f, "{}\r\n.", flushed.out)
+    }
+}
+
+impl Protocol for Gopher {
+    fn generate(data: &SiteData) -> Self {
+        let mut index_content = GopherBuffer::new();
+        index_content.line(INDEX_HEADER);
+
+        index_content.line("");
+        index_content.link("/blog", "Blog");
+        index_content.link("/projects", "Projects");
+        index_content.line("");
+        index_content.external_link("https://github.com/mat-1", "GitHub");
+        index_content.external_link(
+            "https://matrix.to/#/@mat:matdoes.dev",
+            "Matrix",
+        );
+        index_content.external_link(
+            "https://ko-fi.com/matdoesdev",
+            "Ko-fi (donate)",
+        );
+
+        let mut blog_content = GopherBuffer::new();
+        blog_content.line("# Blog");
+        blog_content.line("");
+
+        let mut posts_content = HashMap::new();
         for post in &data.blog {
             let slug = &post.slug;
             let date = post.published.format("%Y-%m-%d").to_string();
             let title = &post.title;
             // add it to the index
-            blog_gmi.push_str(&format!("=> /{slug} {date} - {title}\n"));
+            blog_content.link(&format!("{date} - {title}"), &format!("/{slug}"));
             // generate the content
-            let mut content = String::new();
+            let mut out = GopherBuffer::new();
 
-            content.push_str(&format!("# {title}\n"));
-            content.push_str(&format!("{date}\n\n"));
+            out.line(&format!("# {title}"));
+            out.line(&date);
+            out.line("");
 
             let mut queued_links: Vec<Link> = Vec::new();
-            let mut last_tag_was_line_break = false;
             for (i, part) in post.content.iter().enumerate() {
                 match part {
-                    PostPart::Text(text) => content.push_str(text),
-                    PostPart::CodeBlock(text) => {
-                        content.push_str(&format!("```\n{text}\n```\n"));
+                    PostPart::Text(content) => out.text(content),
+                    PostPart::CodeBlock(content) => {
+                        out.line(&format!("```\n{content}\n```\n"));
                     }
                     PostPart::InlineCode(text) => {
-                        content.push_str(&format!("`{text}`"));
+                        out.text(&format!("`{text}`"));
                     }
                     PostPart::Image { src, alt } => {
-                        let href = match src {
+                         match src {
                             ImageSource::Local(path) => {
                                 // get the path relative to the media directory
-                                path.to_string_lossy()
+                                let local_path = path.to_string_lossy()
                                     .into_owned()
                                     .strip_prefix(
                                         &Path::new("media").to_string_lossy().into_owned(),
                                     )
                                     .unwrap()
-                                    .to_string()
+                                    .to_string();
+                                out.image(&local_path, &alt.to_owned().unwrap_or_default());
                             }
-                            ImageSource::Remote(url) => url.to_owned(),
+                            ImageSource::Remote(url) => {
+                                out.external_link(url, &alt.to_owned().unwrap_or_default());
+                            },
                         };
-                        match alt {
-                            Some(alt) => content.push_str(&format!("=> {href} {alt}\n")),
-                            None => content.push_str(&format!("=> {href}\n")),
-                        }
                     }
                     PostPart::Link { text, href } => {
                         queued_links.push(Link {
@@ -128,93 +211,90 @@ impl Protocol for Gemini {
                             || matches!(post.content[i + 1], PostPart::LineBreak);
                         if before_is_line_break && after_is_line_break {
                             // remove the last line break too
-                            content.pop();
+                            // out.pop();
                         } else {
-                            content.push_str(text);
+                            out.text(text);
                         }
                     }
                     PostPart::LineBreak => {
-                        if !last_tag_was_line_break {
-                            content.push('\n');
-                        }
+                        out.flush();
                         if !queued_links.is_empty() {
                             // flush the queued links
                             for Link { href, text } in queued_links.drain(..) {
-                                content.push_str(&format!("=> {href} {text}\n"));
+                                out.link(&href, &text);
                             }
                         }
-                        content.push('\n');
-                        last_tag_was_line_break = true;
                         continue;
                     }
                     PostPart::Heading { level, text } => match level {
-                        1 => content.push_str(&format!("# {text}\n")),
-                        2 => content.push_str(&format!("## {text}\n")),
-                        3 => content.push_str(&format!("### {text}\n")),
+                        1 => out.line(&format!("# {text}\n")),
+                        2 => out.line(&format!("## {text}\n")),
+                        3 => out.line(&format!("### {text}\n")),
                         _ => {}
                     },
                     PostPart::Italic(text) => {
-                        content.push_str(&format!("*{text}*"));
+                        out.line(&format!("*{text}*"));
                     }
                     PostPart::Bold(text) => {
-                        content.push_str(&format!("**{text}**"));
+                        out.line(&format!("**{text}**"));
                     }
                     PostPart::Quote(text) => {
                         for line in text.lines() {
-                            content.push_str(&format!("> {line}\n"));
+                            out.line(&format!("> {line}\n"));
                         }
                     }
                 }
-                last_tag_was_line_break = false;
             }
             // flush the queued links
             for Link { href, text } in queued_links.drain(..) {
-                content.push_str(&format!("=> {href} {text}\n"));
+                out.link(&href, &text);
             }
 
-            content.push_str("=> /blog ⬅ Back\n");
-
             // add the content to the posts map
-            posts.insert(slug.to_string(), content);
+            posts_content.insert(slug.to_string(), out.to_string());
         }
 
         // projects
-        let mut projects_gmi = String::new();
-        projects_gmi.push_str("# Projects\n\n");
+        let mut projects_content = GopherBuffer::new();
+        projects_content.line("Projects");
         for project in &data.projects {
             let name = &project.name;
             let description = &project.description;
-            projects_gmi.push_str(&format!("## {name}\n"));
-            projects_gmi.push_str(&format!("{description}\n"));
+            projects_content.line(&format!("## {name}\n"));
+            projects_content.line(&format!("{description}\n"));
 
             // only include the link if it's different from the source
             if project.href != project.source {
                 if let Some(href) = &project.href {
-                    let pretty_href = href
-                        .strip_prefix("https://")
-                        .unwrap_or(href.strip_prefix("http://").unwrap_or(href));
-                    let pretty_href = pretty_href.strip_suffix('/').unwrap_or(pretty_href);
-                    projects_gmi.push_str(&format!("=> {href} {pretty_href}\n"))
+                    if href.starts_with("/") {
+                        projects_content.link(href, href);
+                    } else {
+                        let pretty_href = href
+                            .strip_prefix("https://")
+                            .unwrap_or(href.strip_prefix("http://").unwrap_or(href));
+                        let pretty_href = pretty_href.strip_suffix('/').unwrap_or(pretty_href);
+                        projects_content.external_link(href, pretty_href);
+                    }
                 }
             }
 
             if let Some(source) = &project.source {
                 if project.languages.is_empty() {
-                    projects_gmi.push_str(&format!("=> {source} Source code\n"))
+                    projects_content.external_link(source, "Source code");
                 } else {
-                    projects_gmi.push_str(&format!(
-                        "=> {source} Source code ({})\n",
+                    projects_content.external_link(source, &format!(
+                        "Source code ({})\n",
                         project
                             .languages
                             .iter()
                             .map(|l| l.to_string())
                             .collect::<Vec<String>>()
                             .join(", ")
-                    ))
+                    ));
                 }
             } else if !project.languages.is_empty() {
-                projects_gmi.push_str(&format!(
-                    "Languages: {}\n",
+                projects_content.line(&format!(
+                    "Languages: {}",
                     project
                         .languages
                         .iter()
@@ -225,36 +305,32 @@ impl Protocol for Gemini {
             }
         }
 
-        Gemini {
-            blog_gmi,
-            posts_gmi: posts,
-            projects_gmi,
+        Gopher {
+            index_content: index_content.to_string(),
+            blog_content: blog_content.to_string(),
+            posts_content,
+            projects_content: projects_content.to_string(),
         }
     }
 
     async fn serve(self) {
         // start a tcp server
 
-        let gemini = Arc::new(self);
+        let gopher = Arc::new(self);
 
-        let acceptor = cert::acceptor();
         let listener = TcpListener::bind(format!("{BIND_HOST}:{BIND_PORT}"))
             .await
             .unwrap();
 
         loop {
-            let (stream, _) = listener.accept().await.unwrap();
+            let (mut stream, _) = listener.accept().await.unwrap();
             println!("started tcp connection");
-            let acceptor = acceptor.clone();
 
-            let gemini = Arc::clone(&gemini);
+            let gopher = Arc::clone(&gopher);
             let fut = async move {
-                let mut stream = acceptor.accept(stream).await?;
-                println!("wrapped stream in tls");
-
-                let response = respond(gemini, &mut stream)
+                let response = respond(gopher, &mut stream)
                     .await
-                    .unwrap_or(b"59 Internal error\r\n".to_vec());
+                    .unwrap_or(b"iNot found\tfake\t(NULL)\t0\r\n".to_vec());
 
                 stream.write_all(&response).await?;
                 stream.shutdown().await?;
@@ -271,63 +347,23 @@ impl Protocol for Gemini {
     }
 }
 
-async fn respond(
-    gemini: Arc<Gemini>,
-    stream: &mut TlsStream<TcpStream>,
-) -> std::io::Result<Vec<u8>> {
-    let mut request = [0; 1026];
-    let mut len = 0;
+async fn respond(gemini: Arc<Gopher>, stream: &mut TcpStream) -> std::io::Result<Vec<u8>> {
+    let mut retreival_string = String::new();
     loop {
-        let mut buffer = [0; 1027];
-        let Ok(n) = stream.read(&mut buffer).await else {
-            return Ok(b"59 Couldn't receive request\r\n".to_vec());
-        };
-        println!("read {n} bytes: {}", String::from_utf8_lossy(&buffer[..n]));
-        if n == 0 {
+        let c = stream.read_u8().await?;
+        if matches!(c, b'\n' | b'\t') {
             break;
         }
-        if n + len > request.len() {
-            return Ok(b"59 Request is too large\r\n".to_vec());
-        }
-        // add the new data to the request
-        request[len..len + n].copy_from_slice(&buffer[..n]);
-        len += n;
-        if buffer.contains(&b'\r') {
-            break;
-        }
+        retreival_string.push(c as char);
     }
-    // ignore everything after the first \r
-    let request = request[..len].split(|v| v == &b'\r').next().unwrap();
-    let Ok(request) = std::str::from_utf8(request) else {
-        return Ok(b"59 Request is not UTF-8\r\n".to_vec());
-    };
+    let retreival_string = retreival_string.trim_end_matches('\r').to_owned();
 
-    println!("Gemini request: {request}");
+    println!("Gopher request: {retreival_string:?}");
 
-    let Ok(url) = Url::parse(request) else {
-        return Ok(b"59 Request is not a valid URL\r\n".to_vec());
-    };
-
-    if url.scheme() != "gemini" {
-        return Ok(b"53 Request is not a Gemini URL\r\n".to_vec());
-    };
-    if url.host_str() != Some(HOSTNAME) {
-        return Ok(b"53 Host doesn't match\r\n".to_vec());
-    };
-    if url.port().unwrap_or(BIND_PORT) != BIND_PORT {
-        return Ok(b"53 Port doesn't match\r\n".to_vec());
-    };
-
-    Ok(match url.path() {
-        "/" | "" => format!("20 text/gemini\r\n{INDEX_GMI}\n")
-            .as_bytes()
-            .to_vec(),
-        "/blog" => format!("20 text/gemini\r\n{}\n", gemini.blog_gmi)
-            .as_bytes()
-            .to_vec(),
-        "/projects" => format!("20 text/gemini\r\n{}\n", gemini.projects_gmi)
-            .as_bytes()
-            .to_vec(),
+    let content = match retreival_string.as_str() {
+        "/" | "" => gemini.index_content.as_bytes().to_vec(),
+        "/blog" => gemini.blog_content.as_bytes().to_vec(),
+        "/projects" => gemini.projects_content.as_bytes().to_vec(),
         path => {
             let slug = match path.strip_prefix('/') {
                 Some(slug) => slug,
@@ -344,20 +380,18 @@ async fn respond(
                 let mut file = tokio::fs::File::open(path).await.unwrap();
                 let mut content = Vec::new();
                 file.read_to_end(&mut content).await.unwrap();
-                format!("20 {}\r\n", mime)
-                    .as_bytes()
-                    .iter()
-                    .copied()
-                    .chain(content)
-                    .collect()
+                content.extend_from_slice(b"\r\n");
+                content
             } else {
-                match gemini.posts_gmi.get(slug) {
-                    Some(post) => format!("20 text/gemini\r\n{}\r\n", post)
+                match gemini.posts_content.get(slug) {
+                    Some(post) => post
                         .as_bytes()
                         .to_vec(),
-                    None => b"51 Not found\r\n".to_vec(),
+                    None => b"iNot found\tfake\t(NULL)\t0\r\n".to_vec(),
                 }
             }
         }
-    })
+    };
+
+    Ok(content)
 }

@@ -1,6 +1,7 @@
 use crate::crawl::SiteData;
 
 pub mod gemini;
+pub mod gopher;
 pub mod ssh;
 pub mod telnet;
 
