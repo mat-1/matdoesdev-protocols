@@ -205,10 +205,11 @@ Ko-fi (donate): https://ko-fi.com/matdoesdev"#
                     Ok(response) => {
                         write
                             .write_all(
-                                response
-                                    .replace("\r\n", "\n")
-                                    .replace('\n', "\r\n")
-                                    .as_bytes(),
+                                format!(
+                                    "{}\r\n",
+                                    response.replace("\r\n", "\n").replace('\n', "\r\n").trim()
+                                )
+                                .as_bytes(),
                             )
                             .await
                             .unwrap();
