@@ -1,8 +1,9 @@
 use std::{
     collections::HashMap,
+    fmt::{Display, Formatter},
     io::{self},
     path::Path,
-    sync::Arc, fmt::{Display, Formatter},
+    sync::Arc,
 };
 
 use tokio::{
@@ -60,7 +61,6 @@ pub struct Link {
     pub href: String,
 }
 
-
 #[derive(Default, Clone)]
 pub struct GopherBuffer {
     pub buffer: String,
@@ -88,7 +88,7 @@ impl GopherBuffer {
     }
 
     pub fn flush(&mut self) {
-        let buffer = std::mem::replace(&mut self.buffer, String::new());
+        let buffer = std::mem::take(&mut self.buffer);
         for line in buffer.lines() {
             // spaces at the beginning make lagrange format it as a codeblock
             let line = line.trim();
@@ -99,19 +99,22 @@ impl GopherBuffer {
     pub fn link(&mut self, href: &str, text: &str) {
         self.flush();
         for line in text.lines() {
-            self.out.push_str(&format!("1{line}\t{href}\t{HOSTNAME}\t{BIND_PORT}\r\n"));
+            self.out
+                .push_str(&format!("1{line}\t{href}\t{HOSTNAME}\t{BIND_PORT}\r\n"));
         }
     }
 
     pub fn image(&mut self, href: &str, alt: &str) {
         self.flush();
-        self.out.push_str(&format!("I{alt}\t{href}\t{HOSTNAME}\t{BIND_PORT}\r\n"));
+        self.out
+            .push_str(&format!("I{alt}\t{href}\t{HOSTNAME}\t{BIND_PORT}\r\n"));
     }
 
     pub fn external_link(&mut self, href: &str, text: &str) {
         self.flush();
         for line in text.lines() {
-            self.out.push_str(&format!("h{line}\tURL:{href}\t\t443\r\n"));
+            self.out
+                .push_str(&format!("h{line}\tURL:{href}\t\t443\r\n"));
         }
     }
 }
@@ -134,14 +137,8 @@ impl Protocol for Gopher {
         index_content.link("/projects", "Projects");
         index_content.line("");
         index_content.external_link("https://github.com/mat-1", "GitHub");
-        index_content.external_link(
-            "https://matrix.to/#/@mat:matdoes.dev",
-            "Matrix",
-        );
-        index_content.external_link(
-            "https://ko-fi.com/matdoesdev",
-            "Ko-fi (donate)",
-        );
+        index_content.external_link("https://matrix.to/#/@mat:matdoes.dev", "Matrix");
+        index_content.external_link("https://ko-fi.com/matdoesdev", "Ko-fi (donate)");
 
         let mut blog_content = GopherBuffer::new();
         blog_content.line("# Blog");
@@ -172,10 +169,11 @@ impl Protocol for Gopher {
                         out.text(&format!("`{text}`"));
                     }
                     PostPart::Image { src, alt } => {
-                         match src {
+                        match src {
                             ImageSource::Local(path) => {
                                 // get the path relative to the media directory
-                                let local_path = path.to_string_lossy()
+                                let local_path = path
+                                    .to_string_lossy()
                                     .into_owned()
                                     .strip_prefix(
                                         &Path::new("media").to_string_lossy().into_owned(),
@@ -186,7 +184,7 @@ impl Protocol for Gopher {
                             }
                             ImageSource::Remote(url) => {
                                 out.external_link(url, &alt.to_owned().unwrap_or_default());
-                            },
+                            }
                         };
                     }
                     PostPart::Link { text, href } => {
@@ -266,7 +264,7 @@ impl Protocol for Gopher {
             // only include the link if it's different from the source
             if project.href != project.source {
                 if let Some(href) = &project.href {
-                    if href.starts_with("/") {
+                    if href.starts_with('/') {
                         projects_content.link(href, href);
                     } else {
                         let pretty_href = href
@@ -282,15 +280,18 @@ impl Protocol for Gopher {
                 if project.languages.is_empty() {
                     projects_content.external_link(source, "Source code");
                 } else {
-                    projects_content.external_link(source, &format!(
-                        "Source code ({})\n",
-                        project
-                            .languages
-                            .iter()
-                            .map(|l| l.to_string())
-                            .collect::<Vec<String>>()
-                            .join(", ")
-                    ));
+                    projects_content.external_link(
+                        source,
+                        &format!(
+                            "Source code ({})\n",
+                            project
+                                .languages
+                                .iter()
+                                .map(|l| l.to_string())
+                                .collect::<Vec<String>>()
+                                .join(", ")
+                        ),
+                    );
                 }
             } else if !project.languages.is_empty() {
                 projects_content.line(&format!(
@@ -347,7 +348,7 @@ impl Protocol for Gopher {
     }
 }
 
-async fn respond(gemini: Arc<Gopher>, stream: &mut TcpStream) -> std::io::Result<Vec<u8>> {
+async fn respond(gopher: Arc<Gopher>, stream: &mut TcpStream) -> std::io::Result<Vec<u8>> {
     let mut retreival_string = String::new();
     loop {
         let c = stream.read_u8().await?;
@@ -361,9 +362,9 @@ async fn respond(gemini: Arc<Gopher>, stream: &mut TcpStream) -> std::io::Result
     println!("Gopher request: {retreival_string:?}");
 
     let content = match retreival_string.as_str() {
-        "/" | "" => gemini.index_content.as_bytes().to_vec(),
-        "/blog" => gemini.blog_content.as_bytes().to_vec(),
-        "/projects" => gemini.projects_content.as_bytes().to_vec(),
+        "/" | "" => gopher.index_content.as_bytes().to_vec(),
+        "/blog" => gopher.blog_content.as_bytes().to_vec(),
+        "/projects" => gopher.projects_content.as_bytes().to_vec(),
         path => {
             let slug = match path.strip_prefix('/') {
                 Some(slug) => slug,
@@ -383,10 +384,8 @@ async fn respond(gemini: Arc<Gopher>, stream: &mut TcpStream) -> std::io::Result
                 content.extend_from_slice(b"\r\n");
                 content
             } else {
-                match gemini.posts_content.get(slug) {
-                    Some(post) => post
-                        .as_bytes()
-                        .to_vec(),
+                match gopher.posts_content.get(slug) {
+                    Some(post) => post.as_bytes().to_vec(),
                     None => b"iNot found\tfake\t(NULL)\t0\r\n".to_vec(),
                 }
             }

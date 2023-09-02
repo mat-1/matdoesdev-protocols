@@ -92,8 +92,8 @@ impl Opt {
         }
     }
 
-    fn to_u8(&self) -> u8 {
-        *self as u8
+    fn to_u8(self) -> u8 {
+        self as u8
     }
 
     fn read(read: &mut Cursor<Vec<u8>>) -> anyhow::Result<Self> {
@@ -230,7 +230,7 @@ async fn connection(
             write.write_all(b"Bye!\r\n").await?;
             break;
         }
-        let out = terminal_session.on_keystroke(&data);
+        let out = terminal_session.on_keystroke(data);
         write.write_all(&out).await?;
     }
     println!("connection closed");

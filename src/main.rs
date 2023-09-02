@@ -41,8 +41,15 @@ async fn main() {
     let ssh = protocols::ssh::Ssh::generate(&data);
     let telnet = protocols::telnet::Telnet::generate(&data);
     let gopher = protocols::gopher::Gopher::generate(&data);
+    let finger = protocols::finger::Finger::generate(&data);
 
-    tokio::join!(gemini.serve(), ssh.serve(), telnet.serve(), gopher.serve());
+    tokio::join!(
+        gemini.serve(),
+        ssh.serve(),
+        telnet.serve(),
+        gopher.serve(),
+        finger.serve()
+    );
 
     // println!("{:?}", crawl_result);
 }

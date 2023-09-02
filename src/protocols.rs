@@ -1,5 +1,6 @@
 use crate::crawl::SiteData;
 
+pub mod finger;
 pub mod gemini;
 pub mod gopher;
 pub mod ssh;
