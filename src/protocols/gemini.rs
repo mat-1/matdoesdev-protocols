@@ -337,13 +337,19 @@ async fn respond(
             if slug.contains('/') {
                 // get the path relative to the media directory
                 let path = slug;
+                // this feels completely safe and not dangerous at all
+                if path.contains("..") || path.starts_with(&[std::path::MAIN_SEPARATOR, '.', '~']) {
+                    return Ok(b"inyaa~ >_<\tfake\t(NULL)\t0\r\n".to_vec());
+                }
                 let path = Path::new("media").join(path);
                 let mime = mime_guess::from_path(&path).first_or_octet_stream();
                 let mime = mime.to_string();
                 println!("path: {path:?}, mime: {mime}");
-                let mut file = tokio::fs::File::open(path).await.unwrap();
+                let Ok(mut file) = tokio::fs::File::open(path).await else {
+                    return Ok(b"iNot found\tfake\t(NULL)\t0\r\n".to_vec());
+                };
                 let mut content = Vec::new();
-                file.read_to_end(&mut content).await.unwrap();
+                let _ = file.read_to_end(&mut content).await;
                 format!("20 {}\r\n", mime)
                     .as_bytes()
                     .iter()

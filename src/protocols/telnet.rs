@@ -194,7 +194,7 @@ async fn connection(
         println!("{data:?}");
         let mut data = Cursor::new(data.to_vec());
 
-        while data.remaining_slice().starts_with(&[IAC]) {
+        while data.split().1.starts_with(&[IAC]) {
             let _ = data.read_u8()?;
             let command = match Command::read(&mut data) {
                 Ok(command) => command,
@@ -220,7 +220,7 @@ async fn connection(
             }
             continue;
         }
-        let data = data.remaining_slice();
+        let data = data.split().1;
         let data = match data.strip_suffix(b"\0") {
             Some(data) => data,
             None => data,

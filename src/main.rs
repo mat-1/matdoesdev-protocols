@@ -1,6 +1,5 @@
 #![allow(incomplete_features)]
-#![feature(async_fn_in_trait)]
-#![feature(cursor_remaining)]
+#![feature(cursor_split)]
 
 use tokio::fs;
 
