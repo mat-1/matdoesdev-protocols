@@ -339,10 +339,10 @@ async fn respond(
                 let path = slug;
                 let path = Path::new("media").join(path);
                 // this feels completely safe and not dangerous at all
-                if path
+                if !path
                     .components()
                     .into_iter()
-                    .any(|x| matches!(x, std::path::Component::Normal(..)))
+                    .all(|x| matches!(x, std::path::Component::Normal(..)))
                 {
                     return Ok(b"inyaa~ >_<\tfake\t(NULL)\t0\r\n".to_vec());
                 }
