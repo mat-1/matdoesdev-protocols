@@ -375,10 +375,15 @@ async fn respond(gopher: Arc<Gopher>, stream: &mut TcpStream) -> std::io::Result
                 // get the path relative to the media directory
                 let path = slug;
                 // this feels completely safe and not dangerous at all
-                if path.contains("..") || path.starts_with(&[std::path::MAIN_SEPARATOR, '.', '~']) {
+
+                let path = Path::new("media").join(path);
+                if path
+                    .components()
+                    .into_iter()
+                    .any(|x| matches!(x, std::path::Component::Normal(..)))
+                {
                     return Ok(b"inyaa~ >_<\tfake\t(NULL)\t0\r\n".to_vec());
                 }
-                let path = Path::new("media").join(path);
                 let mime = mime_guess::from_path(&path).first_or_octet_stream();
                 let mime = mime.to_string();
                 println!("path: {path:?}, mime: {mime}");
