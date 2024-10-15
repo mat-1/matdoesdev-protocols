@@ -379,7 +379,6 @@ async fn respond(gopher: Arc<Gopher>, stream: &mut TcpStream) -> std::io::Result
                 let path = Path::new("media").join(path);
                 if !path
                     .components()
-                    .into_iter()
                     .all(|x| matches!(x, std::path::Component::Normal(..)))
                 {
                     return Ok(b"inyaa~ >_<\tfake\t(NULL)\t0\r\n".to_vec());

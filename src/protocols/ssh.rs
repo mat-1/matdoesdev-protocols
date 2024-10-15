@@ -95,7 +95,7 @@ async fn connection(
     loop {
         let byte = read.read_u8().await?;
         bytes.push(byte);
-        if bytes.ends_with(&[b'\r', b'\n']) {
+        if bytes.ends_with(b"\r\n") {
             break;
         }
     }
@@ -252,9 +252,8 @@ async fn connection(
                     conn.write_packet(protocol::Message::ServiceAccept { service_name })
                         .await?;
                     conn.write_packet(protocol::Message::UserauthBanner {
-                        message: format!(
-                            "welcome to mat does dev free preview no download required\n"
-                        ),
+                        message: "welcome to mat does dev free preview no download required\n"
+                            .to_string(),
                         language_tag: "".to_string(),
                     })
                     .await?;
@@ -291,9 +290,9 @@ async fn connection(
                     sender_channel,
                     Channel {
                         recipient_window_size: initial_window_size,
-                        sender_window_size: 2097152,
+                        _sender_window_size: 2097152,
                         recipient_maximum_packet_size: maximum_packet_size,
-                        sender_maximum_packet_size: 32768,
+                        _sender_maximum_packet_size: 32768,
                     },
                 );
                 conn.write_packet(protocol::Message::ChannelOpenConfirmation {
