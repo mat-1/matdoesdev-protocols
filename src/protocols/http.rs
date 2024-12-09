@@ -149,7 +149,7 @@ async fn respond(http: Arc<Http>, stream: &mut TcpStream) -> io::Result<Vec<u8>>
                 .await
                 .unwrap_or_default();
             if !expected_secret.is_empty()
-                && query_params.get("secret") == Some(&expected_secret.as_str())
+                && query_params.get("secret") == Some(&expected_secret.trim())
             {
                 let mut full_qotd = String::new();
                 full_qotd.push_str("Quote of the day:\n");
