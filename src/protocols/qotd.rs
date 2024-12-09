@@ -90,8 +90,16 @@ impl Protocol for Qotd {
             }
         };
         let mut buf = [0u8; 0];
+        let mut ratelimited_until = None;
         loop {
             if let Ok((_, remote_addr)) = udp_listener.recv_from(&mut buf).await {
+                if let Some(ratelimited_until_time) = ratelimited_until {
+                    if Instant::now() < ratelimited_until_time {
+                        continue;
+                    }
+                    ratelimited_until = None;
+                }
+
                 println!("received udp request for qotd: {remote_addr:?}");
 
                 // if there's more than 120 requests in the past 60 seconds, wait until the
@@ -103,8 +111,8 @@ impl Protocol for Qotd {
                     let window = Duration::from_secs(60);
                     let elapsed = oldest.elapsed();
                     if elapsed < window {
-                        sleep(window - elapsed).await;
-                        // silently ignore their request
+                        println!("ratelimting qotd udp request from {remote_addr:?}");
+                        ratelimited_until = Some(oldest + window);
                         continue;
                     }
                 }

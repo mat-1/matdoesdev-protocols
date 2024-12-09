@@ -151,9 +151,11 @@ async fn respond(http: Arc<Http>, stream: &mut TcpStream) -> io::Result<Vec<u8>>
             if !expected_secret.is_empty()
                 && query_params.get("secret") == Some(&expected_secret.trim())
             {
+                let qotd_content = String::from_utf8_lossy(&body);
+                println!("changing qotd to \"{qotd_content}\"");
                 let mut full_qotd = String::new();
                 full_qotd.push_str("Quote of the day:\n");
-                full_qotd.push_str(&String::from_utf8_lossy(&body));
+                full_qotd.push_str(&qotd_content);
                 // add another \n if it's not there
                 if !full_qotd.ends_with('\n') {
                     full_qotd.push('\n');
