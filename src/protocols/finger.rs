@@ -188,14 +188,18 @@ Ko-fi (donate): https://ko-fi.com/matdoesdev"#
     }
 
     async fn serve(self) {
-        let listener = TcpListener::bind(format!("{BIND_HOST}:{BIND_PORT}"))
-            .await
-            .unwrap();
+        let listener = match TcpListener::bind(format!("{BIND_HOST}:{BIND_PORT}")).await {
+            Ok(listener) => listener,
+            Err(e) => {
+                eprintln!("failed to bind to port {BIND_PORT}: {e}");
+                return;
+            }
+        };
         let finger = Arc::new(self);
 
         loop {
-            let (stream, _) = listener.accept().await.unwrap();
-            println!("started tcp connection");
+            let (stream, remote_addr) = listener.accept().await.unwrap();
+            println!("started tcp connection for finger: {remote_addr:?}");
 
             let (read, mut write) = stream.into_split();
 

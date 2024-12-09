@@ -55,23 +55,24 @@ impl Protocol for Ssh {
     async fn serve(self) {
         // start a tcp server
 
-        let listener = TcpListener::bind(format!("{BIND_HOST}:{BIND_PORT}"))
-            .await
-            .unwrap();
+        let listener = match TcpListener::bind(format!("{BIND_HOST}:{BIND_PORT}")).await {
+            Ok(listener) => listener,
+            Err(e) => {
+                eprintln!("failed to bind to port {BIND_PORT}: {e}");
+                return;
+            }
+        };
 
         loop {
-            let (stream, _) = listener.accept().await.unwrap();
-            println!("started tcp connection");
+            let (stream, remote_addr) = listener.accept().await.unwrap();
+            println!("started tcp connection for ssh: {remote_addr:?}");
 
             let (read, write) = stream.into_split();
 
             let site_data = self.site_data.clone();
             tokio::spawn(async move {
-                match connection(read, write, site_data).await {
-                    Ok(_) => {}
-                    Err(e) => {
-                        println!("error: {}", e);
-                    }
+                if let Err(e) = connection(read, write, site_data).await {
+                    println!("error: {e}");
                 }
             });
         }

@@ -319,13 +319,17 @@ impl Protocol for Gopher {
 
         let gopher = Arc::new(self);
 
-        let listener = TcpListener::bind(format!("{BIND_HOST}:{BIND_PORT}"))
-            .await
-            .unwrap();
+        let listener = match TcpListener::bind(format!("{BIND_HOST}:{BIND_PORT}")).await {
+            Ok(listener) => listener,
+            Err(e) => {
+                eprintln!("failed to bind to port {BIND_PORT}: {e}");
+                return;
+            }
+        };
 
         loop {
-            let (mut stream, _) = listener.accept().await.unwrap();
-            println!("started tcp connection");
+            let (mut stream, remote_addr) = listener.accept().await.unwrap();
+            println!("started tcp connection for gopher: {remote_addr:?}");
 
             let gopher = Arc::clone(&gopher);
             let fut = async move {

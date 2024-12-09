@@ -191,7 +191,8 @@ async fn crawl_blog(client: &reqwest::Client) -> Result<Vec<Post>, Box<dyn std::
                     if matches!(element_name.as_str(), "p" | "pre" | "h1" | "h2" | "h3")
                         && !content.is_empty()
                     {
-                        // sometimes there's random raw spaces in the html that aren't meant to be displayed
+                        // sometimes there's random raw spaces in the html that aren't meant to be
+                        // displayed
                         if content.last().unwrap() == &PostPart::Text(" ".to_owned()) {
                             content.pop();
                         }
@@ -258,7 +259,8 @@ async fn crawl_blog(client: &reqwest::Client) -> Result<Vec<Post>, Box<dyn std::
                         }
                         "p" | "button" => {
                             if !content.is_empty() {
-                                // sometimes there's random raw spaces in the html that aren't meant to be displayed
+                                // sometimes there's random raw spaces in the html that aren't meant
+                                // to be displayed
                                 if content.last().unwrap() == &PostPart::Text(" ".to_owned()) {
                                     content.pop();
                                 }

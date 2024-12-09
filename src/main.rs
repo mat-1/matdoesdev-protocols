@@ -41,13 +41,19 @@ async fn main() {
     let telnet = protocols::telnet::Telnet::generate(&data);
     let gopher = protocols::gopher::Gopher::generate(&data);
     let finger = protocols::finger::Finger::generate(&data);
+    let qotd = protocols::qotd::Qotd::generate(&data);
+    let mut http = protocols::http::Http::generate(&data);
+
+    http.qotd = qotd.clone();
 
     tokio::join!(
         gemini.serve(),
         ssh.serve(),
         telnet.serve(),
         gopher.serve(),
-        finger.serve()
+        finger.serve(),
+        qotd.serve(),
+        http.serve()
     );
 
     // println!("{:?}", crawl_result);
