@@ -22,12 +22,15 @@ parking_lot = "0.12.3"
 rand = "0.8.5"
 rand_os = "0.2.2"
 rcgen = "0.13.1"
-reqwest = { version = "0.12.8", features = ["json"] }
+reqwest = { version = "0.12.8", features = [
+    "json",
+    "rustls-tls",
+], default-features = false }
 serde = { version = "1.0.210", features = ["derive"] }
 serde_json = "1.0.128"
 sha2 = "0.10.8"
 tl = "0.7.8"
 tokio = { version = "1.40.0", features = ["full"] }
-tokio-rustls = "0.26.0"
+tokio-rustls = { version = "0.26.0", features = ["ring"] }
 tokio-util = { version = "0.7.12", features = ["codec"] }
 url = "2.5.2"

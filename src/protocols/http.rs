@@ -125,9 +125,8 @@ async fn respond(http: Arc<Http>, stream: &mut TcpStream) -> io::Result<Vec<u8>>
         .get("content-length")
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or_default()
-        // don't read more than 65536 bytes of content, especially since our method of reading
-        // content is quite inefficient since it's one byte at a time
-        .min(65536);
+        // 1mb of content. hopefully this is fine.
+        .min(1024 * 1024);
     // read body
     let mut body = Vec::new();
     for _ in 0..content_length {
@@ -141,7 +140,7 @@ async fn respond(http: Arc<Http>, stream: &mut TcpStream) -> io::Result<Vec<u8>>
             response.extend(b"HTTP/1.1 200 OK\r\n");
             response.extend(b"Content-Type: text/plain\r\n");
             response.extend(b"\r\n");
-            response.extend(http.qotd.message.read().as_bytes());
+            response.extend(http.qotd.message.read().as_slice());
         }
         ("/qotd", "POST") => {
             // validate the secret
@@ -151,14 +150,14 @@ async fn respond(http: Arc<Http>, stream: &mut TcpStream) -> io::Result<Vec<u8>>
             if !expected_secret.is_empty()
                 && query_params.get("secret") == Some(&expected_secret.trim())
             {
-                let qotd_content = String::from_utf8_lossy(&body);
-                println!("changing qotd to \"{qotd_content}\"");
-                let mut full_qotd = String::new();
-                full_qotd.push_str("Quote of the day:\n");
-                full_qotd.push_str(&qotd_content);
+                let qotd_content_str = String::from_utf8_lossy(&body);
+                println!("changing qotd to \"{qotd_content_str}\"");
+                let mut full_qotd = Vec::<u8>::new();
+                full_qotd.extend(b"Quote of the day:\n");
+                full_qotd.extend(&body);
                 // add another \n if it's not there
-                if !full_qotd.ends_with('\n') {
-                    full_qotd.push('\n');
+                if full_qotd.last() != Some(&b'\n') {
+                    full_qotd.push(b'\n');
                 }
 
                 // write to file

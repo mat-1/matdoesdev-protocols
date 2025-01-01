@@ -27,7 +27,7 @@ const BIND_PORT: u16 = {
 
 #[derive(Clone)]
 pub struct Qotd {
-    pub message: Arc<RwLock<String>>,
+    pub message: Arc<RwLock<Vec<u8>>>,
 }
 
 pub const QOTD_MESSAGE_PATH: &str = "data/qotd/message.txt";
@@ -35,7 +35,7 @@ pub const QOTD_MESSAGE_PATH: &str = "data/qotd/message.txt";
 impl Protocol for Qotd {
     fn generate(_: &SiteData) -> Self {
         // read message from file
-        let message = fs::read_to_string(QOTD_MESSAGE_PATH).unwrap_or_default();
+        let message = fs::read(QOTD_MESSAGE_PATH).unwrap_or_default();
 
         Qotd {
             message: Arc::new(RwLock::new(message)),
@@ -64,9 +64,13 @@ impl Protocol for Qotd {
 
                     let qotd = Arc::clone(&qotd);
                     let fut = async move {
-                        let response = qotd.message.read().as_bytes().to_vec();
+                        stream.set_nodelay(true)?;
+                        let response = qotd.message.read().to_vec();
                         stream.write_all(&response).await?;
                         stream.shutdown().await?;
+
+                        sleep(Duration::from_millis(200)).await;
+                        stream.set_linger(Some(Duration::from_millis(0)))?;
 
                         Ok(()) as io::Result<()>
                     };
@@ -98,6 +102,10 @@ impl Protocol for Qotd {
                         continue;
                     }
                     ratelimited_until = None;
+
+                    while udp_request_timestamps.len() > 120 {
+                        let _ = udp_request_timestamps.pop_front();
+                    }
                 }
 
                 println!("received udp request for qotd: {remote_addr:?}");
@@ -118,7 +126,7 @@ impl Protocol for Qotd {
                 }
                 udp_request_timestamps.push_back(Instant::now());
 
-                let response = qotd.message.read().as_bytes().to_vec();
+                let response = qotd.message.read().to_vec();
                 let _ = udp_listener.send_to(&response, remote_addr).await;
             }
         }

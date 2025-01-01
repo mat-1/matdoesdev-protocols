@@ -2,3 +2,5 @@
 /data
 /media
 /cache.json
+
+/deploy.sh

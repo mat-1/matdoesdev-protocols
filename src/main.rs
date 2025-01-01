@@ -2,6 +2,7 @@
 #![feature(cursor_split)]
 
 use tokio::fs;
+use tokio_rustls::rustls;
 
 use crate::protocols::Protocol;
 
@@ -23,16 +24,16 @@ async fn main() {
         if let Ok(cache) = fs::read_to_string("cache.json").await {
             serde_json::from_str(&cache).unwrap()
         } else {
-            panic!("no cache");
+            println!("no cache.json! crawling...");
+            crawl_and_save().await
         }
     } else {
-        let crawl_result = crawl::crawl().await.unwrap();
-        // write the results to a cache
-        fs::write("cache.json", serde_json::to_string(&crawl_result).unwrap())
-            .await
-            .unwrap();
-        crawl_result
+        crawl_and_save().await
     };
+
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
 
     println!("now serving");
 
@@ -57,4 +58,13 @@ async fn main() {
     );
 
     // println!("{:?}", crawl_result);
+}
+
+async fn crawl_and_save() -> crawl::SiteData {
+    let crawl_result = crawl::crawl().await.unwrap();
+    // write the results to a cache
+    fs::write("cache.json", serde_json::to_string(&crawl_result).unwrap())
+        .await
+        .unwrap();
+    crawl_result
 }

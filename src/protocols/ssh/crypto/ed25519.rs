@@ -1,4 +1,4 @@
-use std::{io::Read, path::Path};
+use std::{fs, io::Read, path::Path};
 
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 
@@ -15,16 +15,30 @@ pub fn load_keypair() -> SigningKey {
         let keypair_bytes = new_keypair.to_bytes();
 
         // make the directory if it doesn't exist
-        std::fs::create_dir_all(keypair_path.parent().unwrap()).unwrap();
-        std::fs::write(keypair_path, keypair_bytes).unwrap();
+        fs::create_dir_all(keypair_path.parent().unwrap()).unwrap();
+        fs::write(keypair_path, keypair_bytes).unwrap();
     }
 
-    let mut keypair_file = std::fs::File::open(keypair_path).unwrap();
+    let mut keypair_file = fs::File::open(keypair_path).unwrap();
 
     let mut keypair_bytes = Vec::new();
     keypair_file.read_to_end(&mut keypair_bytes).unwrap();
 
-    SigningKey::from_keypair_bytes(&<[u8; 64]>::try_from(keypair_bytes).unwrap()).unwrap()
+    if let Ok(key) = keypair_bytes
+        .as_slice()
+        .try_into()
+        .map(|secret_key: &[u8; 32]| SigningKey::from_bytes(&secret_key))
+    {
+        key
+    } else if let Ok(key) = keypair_bytes
+        .as_slice()
+        .try_into()
+        .map(|secret_key: &[u8; 64]| SigningKey::from_keypair_bytes(&secret_key))
+    {
+        key.unwrap()
+    } else {
+        panic!("failed to load keypair")
+    }
 }
 
 fn generate_new_keypair() -> SigningKey {
