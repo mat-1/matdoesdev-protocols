@@ -55,7 +55,8 @@ fn move_cursor(pos: &Position) -> String {
     format!("\x1b[{};{}H", pos.y + 1, pos.x + 1)
 }
 
-/// Write the word while doing line wrapping. Returns whether the word was inside of the window.
+/// Write the word while doing line wrapping. Returns whether the word was
+/// inside of the window.
 fn flush_word(
     pos: &mut Position,
     word: &mut String,
@@ -95,7 +96,14 @@ impl Element {
                 for c in text.chars() {
                     if c == ' ' {
                         if flush_word(pos, &mut word, parent_rect, window, &mut result) {
-                            result.push(' ');
+                            // sending characters after the end of the line causes it to
+                            // override the last character, which is bad and why we have this check
+                            if pos.x + 1 < parent_rect.left + parent_rect.width as isize {
+                                // this is still important despite the fact that we set the cursor
+                                // position on every flush_word, so escape sequences like links
+                                // still work properly.
+                                result.push(' ');
+                            }
                         }
                         pos.x += 1;
                     } else if c == '\t' {
@@ -169,7 +177,7 @@ impl Element {
                 let start_pos = pos.clone();
                 let selected = data.link_index == Some(data.links.len());
                 if selected {
-                    result.push_str("\x1b[1m");
+                    result.push_str("\x1b[7m");
                 }
                 result.push_str(&inner.render(pos, parent_rect, window, data));
                 if selected {

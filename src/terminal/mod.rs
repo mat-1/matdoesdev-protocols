@@ -180,7 +180,7 @@ impl TerminalSession {
         let mut out = String::new();
         // hide the cursor
         out.push_str("\x1b[?25l");
-        // don't line wrap
+        // disable line wrap
         out.push_str("\x1b[?7l");
         // mouse capturing
         out.push_str("\x1b[?1003h");
